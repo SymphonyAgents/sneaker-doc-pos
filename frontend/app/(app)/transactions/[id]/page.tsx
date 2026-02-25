@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useMemo, useState } from 'react';
+import { use, useEffect, useMemo, useState } from 'react';
 import { ArrowLeftIcon, PlusIcon, EnvelopeIcon } from '@phosphor-icons/react';
 import { Lightbox } from '@/components/ui/lightbox';
 import Link from 'next/link';
@@ -44,18 +44,26 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const updateStatusMut = useUpdateTransactionStatusMutation(id);
   const updateItemStatusMut = useUpdateItemStatusMutation(id);
 
-  const updatingItemId = updateItemStatusMut.isPending
-    ? updateItemStatusMut.variables?.itemId ?? null
-    : null;
+  const [loadingItemId, setLoadingItemId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!isFetching && !updateItemStatusMut.isPending && loadingItemId !== null) {
+      setLoadingItemId(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFetching, updateItemStatusMut.isPending]);
 
   const itemColumns = useMemo(
     () => createTransactionItemColumns({
-      onStatusChange: (itemId, status) => updateItemStatusMut.mutate({ itemId, status }),
+      onStatusChange: (itemId, status) => {
+        setLoadingItemId(itemId);
+        updateItemStatusMut.mutate({ itemId, status });
+      },
       onImageClick: (src, label) => setLightbox({ src, label }),
-      updatingItemId,
+      updatingItemId: loadingItemId,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [updatingItemId],
+    [loadingItemId],
   );
   const addPaymentMut = useAddPaymentMutation(id, () => {
     setShowPaymentForm(false);
