@@ -15,6 +15,7 @@ export function useServicesQuery() {
   return useQuery({
     queryKey: SERVICES_KEY,
     queryFn: () => api.services.list(),
+    staleTime: 5 * 60 * 1000,
   });
 }
 
