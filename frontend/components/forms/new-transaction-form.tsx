@@ -139,6 +139,7 @@ export function NewTransactionForm() {
         return {
           shoeDescription: i.shoeDescription || undefined,
           serviceId: i.primaryServiceId ? parseInt(i.primaryServiceId, 10) : undefined,
+          addonServiceIds: (i.addonServiceIds ?? []).map((id) => parseInt(id, 10)).filter(Boolean),
           status: 'pending' as const,
           price: itemPrice > 0 ? String(itemPrice) : undefined,
         };
