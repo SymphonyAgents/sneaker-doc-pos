@@ -24,14 +24,25 @@ export class TransactionsController {
 
   @UseGuards(SupabaseAuthGuard)
   @Get()
-  findAll(
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
+  findAll(@Query('page') page?: string, @Query('limit') limit?: string) {
     return this.transactionsService.findAll(
       page ? parseInt(page, 10) : 1,
       limit ? parseInt(limit, 10) : 50,
     );
+  }
+
+  @UseGuards(SupabaseAuthGuard)
+  @Get('recent')
+  findRecent(@Query('limit') limit?: string) {
+    return this.transactionsService.findRecent(
+      limit ? parseInt(limit, 10) : 10,
+    );
+  }
+
+  @UseGuards(SupabaseAuthGuard)
+  @Get('upcoming')
+  findUpcoming() {
+    return this.transactionsService.findUpcoming();
   }
 
   @UseGuards(SupabaseAuthGuard)
