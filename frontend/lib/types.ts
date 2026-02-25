@@ -48,6 +48,7 @@ export interface TransactionItem {
   beforeImageUrl: string | null;
   afterImageUrl: string | null;
   price: string | null;
+  service?: { id: number; name: string; type: string } | null;
 }
 
 export interface ClaimPayment {
