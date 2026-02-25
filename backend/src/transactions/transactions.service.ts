@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { eq, desc, sql, gte, lte, and, not, inArray } from 'drizzle-orm';
 import { DrizzleService } from '../db/drizzle.service';
-import { transactions, transactionItems, claimPayments, customers } from '../db/schema';
+import { transactions, transactionItems, claimPayments, customers, promos } from '../db/schema';
 import { TRANSACTION_STATUS } from '../db/constants';
 import { AuditService } from '../audit/audit.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
@@ -38,11 +38,12 @@ export class TransactionsService {
   }
 
   async findOne(id: number) {
-    const [txn] = await this.drizzle.db
-      .select()
+    const [row] = await this.drizzle.db
+      .select({ txn: transactions, promo: promos })
       .from(transactions)
+      .leftJoin(promos, eq(transactions.promoId, promos.id))
       .where(eq(transactions.id, id));
-    if (!txn) throw new NotFoundException(`Transaction ${id} not found`);
+    if (!row) throw new NotFoundException(`Transaction ${id} not found`);
 
     const items = await this.drizzle.db
       .select()
@@ -54,7 +55,7 @@ export class TransactionsService {
       .from(claimPayments)
       .where(eq(claimPayments.transactionId, id));
 
-    return { ...txn, items, payments };
+    return { ...row.txn, promo: row.promo ?? null, items, payments };
   }
 
   async findByNumber(number: string) {
