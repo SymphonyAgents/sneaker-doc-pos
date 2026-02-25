@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
-import type { Transaction, TransactionStatus, PaymentMethod } from '@/lib/types';
+import type { Transaction, TransactionStatus, PaymentMethod, ItemStatus } from '@/lib/types';
 
 export const TRANSACTIONS_KEY = ['transactions'] as const;
 
@@ -92,7 +92,7 @@ export function useUpdateItemStatusMutation(txnId: string) {
   const numericTxnId = parseInt(txnId, 10);
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ itemId, status }: { itemId: number; status: 'pending' | 'in_progress' | 'done' }) =>
+    mutationFn: ({ itemId, status }: { itemId: number; status: ItemStatus }) =>
       api.transactions.updateItem(numericTxnId, itemId, { status }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: transactionDetailKey(txnId) });

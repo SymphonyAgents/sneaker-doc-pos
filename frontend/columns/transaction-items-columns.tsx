@@ -35,7 +35,7 @@ function StatusLoadingPill({ status }: { status: string }) {
 interface TransactionItemColumnsOptions {
   onStatusChange: (itemId: number, status: ItemStatus) => void;
   onImageClick?: (url: string, label: string) => void;
-  updatingItemId?: number | null;
+  loadingItemIds?: Set<number>;
 }
 
 const ITEM_STATUSES: ItemStatus[] = ['pending', 'in_progress', 'done', 'claimed', 'cancelled'];
@@ -59,7 +59,7 @@ function ImageCell({ url, label, onImageClick }: { url: string | null; label: st
   );
 }
 
-export const createTransactionItemColumns = ({ onStatusChange, onImageClick, updatingItemId }: TransactionItemColumnsOptions): ColumnDef<TransactionItem>[] => [
+export const createTransactionItemColumns = ({ onStatusChange, onImageClick, loadingItemIds }: TransactionItemColumnsOptions): ColumnDef<TransactionItem>[] => [
   {
     accessorKey: 'shoeDescription',
     header: 'Shoe',
@@ -85,7 +85,7 @@ export const createTransactionItemColumns = ({ onStatusChange, onImageClick, upd
     accessorKey: 'status',
     header: 'Status',
     cell: ({ row }) => {
-      const isUpdating = updatingItemId === row.original.id;
+      const isUpdating = loadingItemIds?.has(row.original.id) ?? false;
       const locked = ['cancelled', 'claimed'].includes(row.original.status);
 
       if (isUpdating) {

@@ -4,7 +4,7 @@ import { use, useEffect, useMemo, useState } from 'react';
 import { ArrowLeftIcon, PlusIcon, EnvelopeIcon } from '@phosphor-icons/react';
 import { Lightbox } from '@/components/ui/lightbox';
 import Link from 'next/link';
-import { formatPeso, formatDate, formatDatetime, PAYMENT_METHOD_LABELS, STATUS_LABELS, cn } from '@/lib/utils';
+import { formatPeso, formatDate, formatDatetime, PAYMENT_METHOD_LABELS, cn } from '@/lib/utils';
 import { toTitleCase } from '@/utils/text';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
@@ -44,11 +44,11 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const updateStatusMut = useUpdateTransactionStatusMutation(id);
   const updateItemStatusMut = useUpdateItemStatusMutation(id);
 
-  const [loadingItemId, setLoadingItemId] = useState<number | null>(null);
+  const [loadingItemIds, setLoadingItemIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
-    if (!isFetching && !updateItemStatusMut.isPending && loadingItemId !== null) {
-      setLoadingItemId(null);
+    if (!isFetching && !updateItemStatusMut.isPending && loadingItemIds.size > 0) {
+      setLoadingItemIds(new Set());
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFetching, updateItemStatusMut.isPending]);
@@ -56,14 +56,14 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const itemColumns = useMemo(
     () => createTransactionItemColumns({
       onStatusChange: (itemId, status) => {
-        setLoadingItemId(itemId);
+        setLoadingItemIds((prev) => new Set([...prev, itemId]));
         updateItemStatusMut.mutate({ itemId, status });
       },
       onImageClick: (src, label) => setLightbox({ src, label }),
-      updatingItemId: loadingItemId,
+      loadingItemIds,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [loadingItemId],
+    [loadingItemIds],
   );
   const addPaymentMut = useAddPaymentMutation(id, () => {
     setShowPaymentForm(false);
