@@ -35,6 +35,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentError, setPaymentError] = useState('');
 
   const [emailTemplate, setEmailTemplate] = useState<EmailTemplateKey>(EMAIL_TEMPLATES.pickup_ready);
   const [lightbox, setLightbox] = useState<{ src: string; label: string } | null>(null);
@@ -182,10 +183,11 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
               variant="dark"
               size="sm"
               className="w-full mt-4"
-              onClick={() => setShowPaymentForm((v) => !v)}
+              disabled={balance <= 0}
+              onClick={() => { setShowPaymentForm((v) => !v); setPaymentError(''); }}
             >
               <PlusIcon size={13} />
-              Add Payment
+              {balance <= 0 ? 'Fully Paid' : 'Add Payment'}
             </Button>
 
             {showPaymentForm && (
@@ -210,16 +212,33 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                     min="0"
                     step="0.01"
                     value={paymentAmount}
-                    onChange={(e) => setPaymentAmount(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-white border border-zinc-200 rounded-md font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    onChange={(e) => { setPaymentAmount(e.target.value); setPaymentError(''); }}
+                    className={cn(
+                      'w-full px-3 py-2 text-sm bg-white border rounded-md font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500',
+                      paymentError ? 'border-red-400' : 'border-zinc-200',
+                    )}
                     placeholder="0.00"
                   />
+                  {paymentError && (
+                    <p className="text-xs text-red-500">{paymentError}</p>
+                  )}
                 </div>
                 <Button
                   size="sm"
                   className="w-full"
                   disabled={!paymentAmount || addPaymentMut.isPending}
-                  onClick={() => addPaymentMut.mutate({ method: paymentMethod, amount: paymentAmount })}
+                  onClick={() => {
+                    const amt = parseFloat(paymentAmount);
+                    if (isNaN(amt) || amt <= 0) {
+                      setPaymentError('Enter a valid amount');
+                      return;
+                    }
+                    if (amt > balance) {
+                      setPaymentError(`Amount exceeds remaining balance of ${formatPeso(balance)}`);
+                      return;
+                    }
+                    addPaymentMut.mutate({ method: paymentMethod, amount: paymentAmount });
+                  }}
                 >
                   {addPaymentMut.isPending ? <Spinner /> : 'Record Payment'}
                 </Button>
