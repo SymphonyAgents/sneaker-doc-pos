@@ -44,12 +44,18 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const updateStatusMut = useUpdateTransactionStatusMutation(id);
   const updateItemStatusMut = useUpdateItemStatusMutation(id);
 
+  const updatingItemId = updateItemStatusMut.isPending
+    ? updateItemStatusMut.variables?.itemId ?? null
+    : null;
+
   const itemColumns = useMemo(
     () => createTransactionItemColumns({
       onStatusChange: (itemId, status) => updateItemStatusMut.mutate({ itemId, status }),
       onImageClick: (src, label) => setLightbox({ src, label }),
+      updatingItemId,
     }),
-    [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [updatingItemId],
   );
   const addPaymentMut = useAddPaymentMutation(id, () => {
     setShowPaymentForm(false);
