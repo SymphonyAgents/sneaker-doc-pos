@@ -58,6 +58,7 @@ export interface Transaction {
   status: TransactionStatus;
   note: string | null;
   pickupDate: string | null;
+  newPickupDate: string | null;
   total: string;
   paid: string;
   promoId: number | null;
