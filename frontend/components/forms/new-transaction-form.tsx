@@ -13,21 +13,13 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { PageHeader } from '@/components/ui/page-header';
 import type { Service } from '@/lib/types';
 
 const itemSchema = z.object({
   shoeDescription: z.string().min(1, 'Shoe description is required'),
-  serviceId: z.string().min(1, 'Select a service'),
+  primaryServiceId: z.string().min(1, 'Select a primary service'),
+  addonServiceIds: z.array(z.string()),
 });
 
 const schema = z.object({
@@ -37,7 +29,10 @@ const schema = z.object({
   pickupDate: z.string().optional(),
   note: z.string().optional(),
   items: z.array(itemSchema).min(1, 'Add at least one item'),
-});
+}).refine(
+  (data) => !!(data.customerName?.trim() || data.customerPhone?.trim()),
+  { message: 'Provide at least a name or phone number', path: ['customerName'] },
+);
 
 type FormData = z.infer<typeof schema>;
 
@@ -66,7 +61,7 @@ export function NewTransactionForm() {
       customerEmail: '',
       pickupDate: '',
       note: '',
-      items: [{ shoeDescription: '', serviceId: '' }],
+      items: [{ shoeDescription: '', primaryServiceId: '', addonServiceIds: [] }],
     },
   });
 
@@ -75,14 +70,31 @@ export function NewTransactionForm() {
   const watchedItems = useWatch({ control, name: 'items' });
 
   const total = (watchedItems ?? []).reduce((sum, item) => {
-    if (!item?.serviceId) return sum;
-    const svc = (services as Service[]).find((s) => s.id === parseInt(item.serviceId, 10));
-    return sum + (svc ? parseFloat(svc.price) : 0);
+    const primarySvc = item?.primaryServiceId
+      ? (services as Service[]).find((s) => s.id === parseInt(item.primaryServiceId, 10))
+      : null;
+    const addonTotal = (item?.addonServiceIds ?? []).reduce((aSum, id) => {
+      const svc = (services as Service[]).find((s) => s.id === parseInt(id, 10));
+      return aSum + (svc ? parseFloat(svc.price) : 0);
+    }, 0);
+    return sum + (primarySvc ? parseFloat(primarySvc.price) : 0) + addonTotal;
   }, 0);
 
   const createMut = useMutation({
-    mutationFn: (data: FormData) =>
-      api.transactions.create({
+    mutationFn: (data: FormData) => {
+      const allItems = data.items.flatMap((i) => {
+        const svcIds = [i.primaryServiceId, ...(i.addonServiceIds ?? [])].filter(Boolean);
+        return svcIds.map((serviceId) => {
+          const svc = (services as Service[]).find((s) => s.id === parseInt(serviceId, 10));
+          return {
+            shoeDescription: i.shoeDescription || undefined,
+            serviceId: parseInt(serviceId, 10),
+            status: 'pending' as const,
+            price: svc ? svc.price : undefined,
+          };
+        });
+      });
+      return api.transactions.create({
         customerName: data.customerName || undefined,
         customerPhone: data.customerPhone || undefined,
         customerEmail: data.customerEmail || undefined,
@@ -90,18 +102,9 @@ export function NewTransactionForm() {
         note: data.note || undefined,
         total: String(total),
         paid: '0',
-        items: data.items.map((i) => {
-          const svc = i.serviceId
-            ? (services as Service[]).find((s) => s.id === parseInt(i.serviceId, 10))
-            : null;
-          return {
-            shoeDescription: i.shoeDescription || undefined,
-            serviceId: i.serviceId ? parseInt(i.serviceId, 10) : undefined,
-            status: 'pending',
-            price: svc ? svc.price : undefined,
-          };
-        }),
-      }),
+        items: allItems,
+      });
+    },
     onSuccess: (txn) => {
       toast.success('Transaction created');
       router.push(`/transactions/${txn.id}`);
@@ -137,6 +140,9 @@ export function NewTransactionForm() {
                     placeholder="Juan dela Cruz"
                     {...register('customerName')}
                   />
+                  {errors.customerName && (
+                    <p className="text-xs text-red-500">{errors.customerName.message}</p>
+                  )}
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Input
@@ -165,12 +171,12 @@ export function NewTransactionForm() {
                 <h2 className="text-sm font-semibold text-zinc-950">Shoes & Services</h2>
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="dark"
                   size="sm"
-                  onClick={() => append({ shoeDescription: '', serviceId: '' })}
+                  onClick={() => append({ shoeDescription: '', primaryServiceId: '', addonServiceIds: [] })}
                 >
                   <PlusIcon size={13} weight="bold" />
-                  Add Item
+                  Add Shoe
                 </Button>
               </div>
 
@@ -179,88 +185,130 @@ export function NewTransactionForm() {
               )}
 
               <div className="space-y-3">
-                {fields.map((field, idx) => (
-                  <div
-                    key={field.id}
-                    className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto_auto] gap-3 items-start p-3 bg-zinc-50 rounded-md"
-                  >
-                    <div className="flex flex-col gap-1.5">
-                      <span className={cn('text-xs font-medium text-zinc-700', idx !== 0 && 'invisible')}>
-                        Shoe Description
-                      </span>
-                      <Input
-                        placeholder="e.g. Nike Air Max 1, White/Black"
-                        {...register(`items.${idx}.shoeDescription`)}
-                      />
-                      <p className="h-4 text-xs text-red-500">
-                        {errors.items?.[idx]?.shoeDescription?.message ?? ''}
-                      </p>
-                    </div>
+                {fields.map((field, idx) => {
+                  const primaryServiceId = watchedItems?.[idx]?.primaryServiceId ?? '';
+                  const addonServiceIds = watchedItems?.[idx]?.addonServiceIds ?? [];
 
-                    <div className="flex flex-col gap-1.5">
-                      <span className={cn('text-xs font-medium text-zinc-700', idx !== 0 && 'invisible')}>
-                        Service
-                      </span>
-                      <Select
-                        onValueChange={(v) => setValue(`items.${idx}.serviceId`, v)}
-                        defaultValue=""
-                      >
-                        <SelectTrigger className="h-9 text-sm w-full">
-                          <SelectValue placeholder="— Select service —" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {primaryServices.length > 0 && (
-                            <SelectGroup>
-                              <SelectLabel>Primary</SelectLabel>
-                              {primaryServices.map((s) => (
-                                <SelectItem key={s.id} value={String(s.id)}>
-                                  {s.name} — ₱{parseFloat(s.price).toFixed(2)}
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
+                  return (
+                    <div
+                      key={field.id}
+                      className="p-3 bg-zinc-50 rounded-md space-y-3"
+                    >
+                      {/* Shoe description row */}
+                      <div className="flex gap-2 items-start">
+                        <div className="flex-1 space-y-1">
+                          <Input
+                            placeholder="e.g. Nike Air Max 1, White/Black"
+                            {...register(`items.${idx}.shoeDescription`)}
+                          />
+                          {errors.items?.[idx]?.shoeDescription && (
+                            <p className="text-xs text-red-500">
+                              {errors.items[idx].shoeDescription?.message}
+                            </p>
                           )}
-                          {addonServices.length > 0 && (
-                            <SelectGroup>
-                              <SelectLabel>Add-ons</SelectLabel>
-                              {addonServices.map((s) => (
-                                <SelectItem key={s.id} value={String(s.id)}>
-                                  {s.name} — ₱{parseFloat(s.price).toFixed(2)}
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          )}
-                        </SelectContent>
-                      </Select>
-                      <p className="h-4 text-xs text-red-500">
-                        {errors.items?.[idx]?.serviceId?.message ?? ''}
-                      </p>
-                    </div>
+                        </div>
 
-                    <div className="flex items-center justify-between sm:contents gap-3">
-                      <div className="flex flex-col items-center">
-                        <span className={cn('text-xs font-medium text-zinc-500', idx !== 0 && 'invisible')}>Before</span>
-                        <div
-                          title="Photo upload available after save"
-                          className="w-10 h-10 mt-0.5 rounded-md border-2 border-dashed border-zinc-300 flex items-center justify-center bg-zinc-100 cursor-not-allowed"
-                        >
-                          <CameraIcon size={16} className="text-zinc-500" />
+                        <div className="flex items-center gap-1.5 pt-0.5">
+                          <div
+                            title="Photo upload available after save"
+                            className="w-9 h-9 rounded-md border-2 border-dashed border-zinc-300 flex items-center justify-center bg-zinc-100 cursor-not-allowed shrink-0"
+                          >
+                            <CameraIcon size={14} className="text-zinc-500" />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => remove(idx)}
+                            disabled={fields.length === 1}
+                            className="w-9 h-9 flex items-center justify-center rounded-md bg-red-400 text-white hover:bg-red-500 transition-colors disabled:opacity-30 shrink-0"
+                          >
+                            <TrashIcon size={14} />
+                          </button>
                         </div>
                       </div>
 
-                      <div className="flex flex-col">
-                        <span className={cn('text-xs', idx !== 0 && 'invisible')}>‎</span>
-                        <button
-                          type="button"
-                          onClick={() => remove(idx)}
-                          disabled={fields.length === 1}
-                          className="p-2 text-zinc-400 hover:text-red-500 transition-colors disabled:opacity-30"
-                        >
-                          <TrashIcon size={14} />
-                        </button>
+                      {/* Primary service picker */}
+                      <div>
+                        <span className="text-xs font-medium text-zinc-500 block mb-1.5">
+                          Primary Service
+                        </span>
+                        {primaryServices.length === 0 ? (
+                          <p className="text-xs text-zinc-400">No primary services available.</p>
+                        ) : (
+                          <div className="flex flex-wrap gap-1.5">
+                            {primaryServices.map((s) => {
+                              const selected = primaryServiceId === String(s.id);
+                              return (
+                                <button
+                                  key={s.id}
+                                  type="button"
+                                  onClick={() =>
+                                    setValue(
+                                      `items.${idx}.primaryServiceId`,
+                                      selected ? '' : String(s.id),
+                                    )
+                                  }
+                                  className={cn(
+                                    'inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border transition-colors duration-100',
+                                    selected
+                                      ? 'bg-zinc-950 text-white border-zinc-950'
+                                      : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50',
+                                  )}
+                                >
+                                  {s.name}
+                                  <span className={cn('font-mono', selected ? 'opacity-60' : 'text-zinc-400')}>
+                                    ₱{parseFloat(s.price).toLocaleString()}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {errors.items?.[idx]?.primaryServiceId && (
+                          <p className="text-xs text-red-500 mt-1">
+                            {errors.items[idx].primaryServiceId?.message}
+                          </p>
+                        )}
                       </div>
+
+                      {/* Add-on picker */}
+                      {addonServices.length > 0 && (
+                        <div>
+                          <span className="text-xs font-medium text-zinc-500 block mb-1.5">
+                            Add-ons
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {addonServices.map((s) => {
+                              const selected = addonServiceIds.includes(String(s.id));
+                              return (
+                                <button
+                                  key={s.id}
+                                  type="button"
+                                  onClick={() => {
+                                    const next = selected
+                                      ? addonServiceIds.filter((id) => id !== String(s.id))
+                                      : [...addonServiceIds, String(s.id)];
+                                    setValue(`items.${idx}.addonServiceIds`, next);
+                                  }}
+                                  className={cn(
+                                    'inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border transition-colors duration-100',
+                                    selected
+                                      ? 'bg-zinc-700 text-white border-zinc-700'
+                                      : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50',
+                                  )}
+                                >
+                                  {s.name}
+                                  <span className={cn('font-mono', selected ? 'opacity-60' : 'text-zinc-400')}>
+                                    +₱{parseFloat(s.price).toLocaleString()}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -301,9 +349,9 @@ export function NewTransactionForm() {
               <h2 className="text-sm font-semibold text-zinc-950 mb-3">Summary</h2>
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-zinc-500">Items</span>
+                  <span className="text-zinc-500">Shoes</span>
                   <span className="font-mono text-zinc-950">
-                    {(watchedItems ?? []).filter((i) => i?.serviceId).length}
+                    {(watchedItems ?? []).filter((i) => i?.primaryServiceId).length}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-sm border-t border-zinc-100 pt-2">
