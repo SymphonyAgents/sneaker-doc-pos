@@ -8,6 +8,15 @@ export interface User {
 
 export type { TransactionStatus, ItemStatus, PaymentMethod, ServiceType } from './constants';
 
+export interface Customer {
+  id: number;
+  phone: string;
+  name: string | null;
+  email: string | null;
+  createdAt: string;
+  updatedAt: string | null;
+}
+
 export interface Service {
   id: number;
   name: string;
