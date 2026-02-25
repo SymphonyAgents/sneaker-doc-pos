@@ -86,6 +86,7 @@ export const transactionItems = pgTable('transaction_items', {
   beforeImageUrl: text('before_image_url'),
   afterImageUrl: text('after_image_url'),
   price: numeric('price', { precision: 10, scale: 2 }), // snapshot of service price at time of intake
+  addonServiceIds: jsonb('addon_service_ids').$type<number[]>(), // snapshot of add-on service IDs at time of intake
 });
 
 // ---------------------------------------------------------------------------
