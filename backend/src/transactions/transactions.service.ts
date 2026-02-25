@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { eq, desc, sql, gte, lte, and, not, inArray } from 'drizzle-orm';
 import { DrizzleService } from '../db/drizzle.service';
-import { transactions, transactionItems, claimPayments } from '../db/schema';
+import { transactions, transactionItems, claimPayments, customers } from '../db/schema';
 import { TRANSACTION_STATUS } from '../db/constants';
 import { AuditService } from '../audit/audit.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
@@ -101,6 +101,25 @@ export class TransactionsService {
           price: item.price ?? null,
         })),
       );
+    }
+
+    if (dto.customerPhone) {
+      await this.drizzle.db
+        .insert(customers)
+        .values({
+          phone: dto.customerPhone,
+          name: dto.customerName ?? null,
+          email: dto.customerEmail ?? null,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: customers.phone,
+          set: {
+            name: dto.customerName ?? null,
+            email: dto.customerEmail ?? null,
+            updatedAt: new Date(),
+          },
+        });
     }
 
     await this.audit.log({
