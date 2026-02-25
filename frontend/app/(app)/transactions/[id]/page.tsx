@@ -175,7 +175,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
             </div>
 
             {!txnLocked && (
-              <div className="mt-3 pt-3 border-t border-zinc-100 space-y-3">
+              <div className="mt-3 pt-3 border-t border-zinc-100 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <p className="text-xs text-zinc-400 mb-1.5">
                     {txn.newPickupDate ? 'Update Rescheduled Date' : 'Reschedule Pickup'}
