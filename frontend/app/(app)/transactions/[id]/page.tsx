@@ -9,7 +9,13 @@ import { toTitleCase } from '@/utils/text';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/status-badge';
-import { Select } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { DataTable } from '@/components/ui/data-table';
 import { Spinner } from '@/components/ui/spinner';
 import { createTransactionItemColumns } from '@/columns/transaction-items-columns';
@@ -33,7 +39,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const [emailTemplate, setEmailTemplate] = useState<EmailTemplateKey>(EMAIL_TEMPLATES.pickup_ready);
   const [lightbox, setLightbox] = useState<{ src: string; label: string } | null>(null);
 
-  const { data: txn, isLoading } = useTransactionDetailQuery(id);
+  const { data: txn, isLoading, isFetching } = useTransactionDetailQuery(id);
   const updateStatusMut = useUpdateTransactionStatusMutation(id);
   const updateItemStatusMut = useUpdateItemStatusMutation(id);
 
@@ -76,16 +82,17 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
           </Link>
         }
         action={
-          <Select
-            value={txn.status}
-            onChange={(e) => updateStatusMut.mutate(e.target.value as TransactionStatus)}
-            className="w-40"
-          >
-            {TRANSACTION_STATUS_VALUES.map((s) => (
-              <option key={s} value={s}>
-                {STATUS_LABELS[s]}
-              </option>
-            ))}
+          <Select value={txn.status} onValueChange={(v) => updateStatusMut.mutate(v as TransactionStatus)}>
+            <SelectTrigger className="h-9 w-40 text-sm border-zinc-200">
+              <StatusBadge status={txn.status} />
+            </SelectTrigger>
+            <SelectContent>
+              {TRANSACTION_STATUS_VALUES.map((s) => (
+                <SelectItem key={s} value={s}>
+                  <StatusBadge status={s} />
+                </SelectItem>
+              ))}
+            </SelectContent>
           </Select>
         }
       />
@@ -128,6 +135,8 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
             <DataTable
               columns={itemColumns}
               data={txn.items ?? []}
+              isLoading={isFetching && !txn.items}
+              loadingRows={3}
               emptyTitle="No items"
             />
           </div>
@@ -160,7 +169,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
             </div>
 
             <Button
-              variant="secondary"
+              variant="dark"
               size="sm"
               className="w-full mt-4"
               onClick={() => setShowPaymentForm((v) => !v)}
@@ -171,17 +180,19 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
 
             {showPaymentForm && (
               <div className="mt-3 space-y-2.5 pt-3 border-t border-zinc-100">
-                <Select
-                  label="Method"
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
-                >
-                  {PAYMENT_METHOD_VALUES.map((m) => (
-                    <option key={m} value={m}>
-                      {PAYMENT_METHOD_LABELS[m]}
-                    </option>
-                  ))}
-                </Select>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-zinc-700">Method</label>
+                  <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}>
+                    <SelectTrigger className="h-9 text-sm w-full border-zinc-200">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PAYMENT_METHOD_VALUES.map((m) => (
+                        <SelectItem key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-medium text-zinc-700">Amount (₱)</label>
                   <input
@@ -244,15 +255,16 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
               </h2>
               <p className="text-xs text-zinc-400 mb-3 truncate">{txn.customerEmail}</p>
               <div className="space-y-2">
-                <select
-                  value={emailTemplate}
-                  onChange={(e) => setEmailTemplate(e.target.value as EmailTemplateKey)}
-                  className="w-full px-3 py-2 text-sm bg-white border border-zinc-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                >
-                  {Object.entries(EMAIL_TEMPLATE_LABELS).map(([key, label]) => (
-                    <option key={key} value={key}>{label}</option>
-                  ))}
-                </select>
+                <Select value={emailTemplate} onValueChange={(v) => setEmailTemplate(v as EmailTemplateKey)}>
+                  <SelectTrigger className="h-9 text-sm w-full border-zinc-200">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(EMAIL_TEMPLATE_LABELS).map(([key, label]) => (
+                      <SelectItem key={key} value={key}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <a
                   href={generateGmailLink(txn, emailTemplate)}
                   target="_blank"
