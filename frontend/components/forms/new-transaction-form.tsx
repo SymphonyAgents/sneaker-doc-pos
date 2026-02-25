@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useFieldArray, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -14,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { Input } from '@/components/ui/input';
 import { PageHeader } from '@/components/ui/page-header';
+import { useCustomerByPhoneQuery } from '@/hooks/useCustomersQuery';
 import type { Service } from '@/lib/types';
 
 const itemSchema = z.object({
@@ -65,6 +67,23 @@ export function NewTransactionForm() {
   const { fields, append, remove } = useFieldArray({ control, name: 'items' });
 
   const watchedItems = useWatch({ control, name: 'items' });
+  const phoneValue = useWatch({ control, name: 'customerPhone' }) ?? '';
+
+  const [debouncedPhone, setDebouncedPhone] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedPhone(phoneValue), 400);
+    return () => clearTimeout(t);
+  }, [phoneValue]);
+
+  const { data: existingCustomer, isFetching: customerLookingUp } = useCustomerByPhoneQuery(debouncedPhone);
+
+  useEffect(() => {
+    if (existingCustomer) {
+      if (existingCustomer.name) setValue('customerName', existingCustomer.name);
+      if (existingCustomer.email) setValue('customerEmail', existingCustomer.email);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingCustomer]);
 
   const total = (watchedItems ?? []).reduce((sum, item) => {
     const primarySvc = item?.primaryServiceId
@@ -146,8 +165,19 @@ export function NewTransactionForm() {
                   )}
                 </div>
                 <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-zinc-700">Phone</span>
+                    {customerLookingUp && debouncedPhone.length >= 7 && (
+                      <span className="text-xs text-zinc-400">Looking up...</span>
+                    )}
+                    {!customerLookingUp && existingCustomer && (
+                      <span className="text-xs text-emerald-600 font-medium">Customer found</span>
+                    )}
+                    {!customerLookingUp && debouncedPhone.length >= 7 && existingCustomer === null && (
+                      <span className="text-xs text-zinc-400">New customer</span>
+                    )}
+                  </div>
                   <Input
-                    label="Phone"
                     placeholder="09XX XXX XXXX"
                     {...register('customerPhone')}
                   />
