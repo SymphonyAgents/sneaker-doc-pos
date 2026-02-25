@@ -57,6 +57,7 @@ export const transactions = pgTable('transactions', {
   status: varchar('status', { length: 50 }).default('pending').notNull(), // pending | in_progress | done | claimed | cancelled
   note: varchar('note', { length: 1000 }),
   pickupDate: date('pickup_date'),
+  newPickupDate: date('new_pickup_date'),
   total: numeric('total', { precision: 10, scale: 2 }).default('0').notNull(),
   paid: numeric('paid', { precision: 10, scale: 2 }).default('0').notNull(),
   promoId: integer('promo_id').references(() => promos.id, {
