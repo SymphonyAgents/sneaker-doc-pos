@@ -74,6 +74,7 @@ export interface Transaction {
   createdAt: string;
   claimedAt: string | null;
   updatedAt: string | null;
+  promo?: Promo | null;
   items?: TransactionItem[];
   payments?: ClaimPayment[];
 }
