@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { eq, desc, sql, gte, lte, and, not, inArray } from 'drizzle-orm';
 import { DrizzleService } from '../db/drizzle.service';
-import { transactions, transactionItems, claimPayments, customers, promos } from '../db/schema';
+import { transactions, transactionItems, claimPayments, customers, promos, services } from '../db/schema';
 import { TRANSACTION_STATUS } from '../db/constants';
 import { AuditService } from '../audit/audit.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
@@ -45,10 +45,15 @@ export class TransactionsService {
       .where(eq(transactions.id, id));
     if (!row) throw new NotFoundException(`Transaction ${id} not found`);
 
-    const items = await this.drizzle.db
-      .select()
+    const itemRows = await this.drizzle.db
+      .select({ item: transactionItems, service: services })
       .from(transactionItems)
+      .leftJoin(services, eq(transactionItems.serviceId, services.id))
       .where(eq(transactionItems.transactionId, id));
+    const items = itemRows.map((r) => ({
+      ...r.item,
+      service: r.service ? { id: r.service.id, name: r.service.name, type: r.service.type } : null,
+    }));
 
     const payments = await this.drizzle.db
       .select()
