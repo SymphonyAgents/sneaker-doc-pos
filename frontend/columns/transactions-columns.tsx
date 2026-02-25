@@ -69,12 +69,17 @@ export const createTransactionColumns = ({ onDelete }: TransactionColumnsOptions
       const paid = parseFloat(row.original.paid);
       const isPartial = balance > 0 && paid > 0;
       const isUnpaid = balance > 0 && paid === 0;
+      const pillClass = isUnpaid
+        ? 'bg-red-100 text-red-600'
+        : isPartial
+          ? 'bg-amber-100 text-amber-700'
+          : 'bg-emerald-100 text-emerald-700';
       return (
-        <span className={`block text-right font-mono text-sm ${
-          isUnpaid ? 'text-red-500' : isPartial ? 'text-amber-600' : 'text-emerald-600'
-        }`}>
-          {isUnpaid ? formatPeso(balance) : isPartial ? 'Partial' : 'Paid'}
-        </span>
+        <div className="flex justify-end">
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium font-mono ${pillClass}`}>
+            {isUnpaid ? formatPeso(balance) : isPartial ? 'Partial' : 'Paid'}
+          </span>
+        </div>
       );
     },
   },
