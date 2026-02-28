@@ -1,8 +1,14 @@
 'use client';
 
 import { type ColumnDef } from '@tanstack/react-table';
-import { formatDatetime } from '@/lib/utils';
-import { cn } from '@/lib/utils';
+import { formatDatetime, cn } from '@/lib/utils';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import type { AppUser } from '@/lib/types';
 
 const ROLES = ['staff', 'admin', 'superadmin'] as const;
@@ -44,15 +50,18 @@ export const createUserColumns = ({ onRoleChange, currentUserId }: UserColumnsOp
               {user.userType}
             </span>
           ) : (
-            <select
-              value={user.userType}
-              onChange={(e) => onRoleChange(user.id, e.target.value)}
-              className="text-xs font-medium border border-zinc-200 rounded px-2 py-1 bg-white text-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-            >
-              {ROLES.map((r) => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
+            <Select value={user.userType} onValueChange={(v) => onRoleChange(user.id, v)}>
+              <SelectTrigger className="h-7 text-xs w-32 border-zinc-200">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ROLES.map((r) => (
+                  <SelectItem key={r} value={r} className="text-xs">
+                    {r}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
         </div>
       );
