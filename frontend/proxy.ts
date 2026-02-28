@@ -21,11 +21,10 @@ export async function proxy(request: NextRequest) {
 
   const { data: { session } } = await supabase.auth.getSession();
 
-  // Root "/" — redirect based on session
+  // Root "/" — dashboard, requires session
   if (pathname === ROUTES.ROOT) {
-    return NextResponse.redirect(
-      new URL(session ? ROUTES.TRANSACTIONS : ROUTES.LOGIN, request.url),
-    );
+    if (!session) return NextResponse.redirect(new URL(ROUTES.LOGIN, request.url));
+    return response;
   }
 
   if (!session && PROTECTED_ROUTES.some((r) => pathname.startsWith(r))) {
@@ -33,7 +32,7 @@ export async function proxy(request: NextRequest) {
   }
 
   if (session && AUTH_ROUTES.includes(pathname)) {
-    return NextResponse.redirect(new URL(ROUTES.TRANSACTIONS, request.url));
+    return NextResponse.redirect(new URL(ROUTES.ROOT, request.url));
   }
 
   return response;
