@@ -8,6 +8,8 @@ import { DataTable } from '@/components/ui/data-table';
 import { createUserColumns } from '@/columns/users-columns';
 import { useUsersQuery, useUpdateUserRoleMutation } from '@/hooks/useUsersQuery';
 import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
+import { useBranchesQuery } from '@/hooks/useBranchesQuery';
+import { toTitleCase } from '@/utils/text';
 import type { AppUser } from '@/lib/types';
 
 export default function UsersPage() {
@@ -15,6 +17,7 @@ export default function UsersPage() {
   const isAdmin = currentUser?.userType === 'admin' || currentUser?.userType === 'superadmin';
 
   const { data: users = [], isLoading } = useUsersQuery();
+  const { data: branches = [] } = useBranchesQuery(false);
   const updateRoleMut = useUpdateUserRoleMutation();
 
   const columns = useMemo(
@@ -30,6 +33,33 @@ export default function UsersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [currentUser?.id],
   );
+
+  const grouped = useMemo(() => {
+    const allUsers = users as AppUser[];
+    const branchMap = new Map(branches.map((b) => [b.id, b.name]));
+
+    const groups = new Map<string, { label: string; users: AppUser[] }>();
+
+    for (const user of allUsers) {
+      const key = user.branchId !== null ? String(user.branchId) : '__none__';
+      if (!groups.has(key)) {
+        const label = user.branchId !== null
+          ? toTitleCase(branchMap.get(user.branchId) ?? `Branch #${user.branchId}`)
+          : 'No Branch';
+        groups.set(key, { label, users: [] });
+      }
+      groups.get(key)!.users.push(user);
+    }
+
+    // Sort: named branches first (alphabetically), unassigned last
+    return [...groups.entries()]
+      .sort(([a], [b]) => {
+        if (a === '__none__') return 1;
+        if (b === '__none__') return -1;
+        return (groups.get(a)!.label).localeCompare(groups.get(b)!.label);
+      })
+      .map(([, group]) => group);
+  }, [users, branches]);
 
   if (userLoaded && !isAdmin) {
     return (
@@ -51,14 +81,38 @@ export default function UsersPage() {
         title="Users"
         subtitle="Manage team roles and access"
       />
-      <DataTable
-        columns={columns}
-        data={users as AppUser[]}
-        isLoading={isLoading}
-        loadingRows={4}
-        emptyTitle="No users found"
-        emptyDescription="Users appear here once they sign in."
-      />
+      {isLoading ? (
+        <DataTable
+          columns={columns}
+          data={[]}
+          isLoading
+          loadingRows={4}
+          emptyTitle="No users found"
+          emptyDescription="Users appear here once they sign in."
+        />
+      ) : grouped.length === 0 ? (
+        <p className="text-sm text-zinc-400">No users found.</p>
+      ) : (
+        <div className="space-y-8">
+          {grouped.map((group) => (
+            <div key={group.label}>
+              <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400 mb-3">
+                {group.label}
+                <span className="ml-2 font-normal normal-case tracking-normal text-zinc-300">
+                  {group.users.length} {group.users.length === 1 ? 'user' : 'users'}
+                </span>
+              </p>
+              <DataTable
+                columns={columns}
+                data={group.users}
+                isLoading={false}
+                emptyTitle="No users"
+                emptyDescription=""
+              />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
