@@ -343,7 +343,7 @@ export default function DashboardPage() {
         </>
       )}
 
-      {/* Staff: daily stats */}
+      {/* Staff: daily stat cards + today's payment method breakdown */}
       {!isAdmin && (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
@@ -369,7 +369,7 @@ export default function DashboardPage() {
             <StatCard
               label="Collected Today"
               href="/transactions"
-              value={formatPeso(dailyStats.totalPaid)}
+              value={formatPeso(todayCollectionTotal)}
               mono
               loading={dailyLoading}
               icon={WalletIcon}
@@ -388,7 +388,6 @@ export default function DashboardPage() {
             />
           </div>
 
-          {/* Today's collections by method */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
             {METHOD_ORDER.map((key) => {
               const config = PAYMENT_METHOD_CONFIG[key];
@@ -406,44 +405,44 @@ export default function DashboardPage() {
               );
             })}
           </div>
-
-          {/* Today's collections list */}
-          <div className="bg-white border border-zinc-200 rounded-lg p-5 mb-6">
-            <h2 className="text-sm font-semibold text-zinc-950 mb-1 flex items-center gap-1.5">
-              <CoinIcon size={14} className="text-emerald-500" />
-              Today&apos;s Collections
-              {todayCollections.length > 0 && (
-                <span className="ml-auto text-xs font-mono font-medium text-emerald-600">
-                  {formatPeso(todayCollectionTotal)}
-                </span>
-              )}
-            </h2>
-            <p className="text-xs text-zinc-400 mb-3">Payments recorded today</p>
-            {todayCollections.length === 0 ? (
-              <p className="text-sm text-zinc-400">No collections recorded today.</p>
-            ) : (
-              <div className="divide-y divide-zinc-100">
-                {todayCollections.map((c) => (
-                  <Link
-                    key={c.id}
-                    href={`/transactions/${c.transactionId}`}
-                    className="flex items-center justify-between py-2.5 hover:bg-zinc-50 -mx-1 px-1 rounded transition-colors duration-150"
-                  >
-                    <div className="min-w-0">
-                      <p className="font-mono text-xs font-medium text-zinc-950">#{c.txnNumber}</p>
-                      <p className="text-xs text-zinc-500 truncate">{toTitleCase(c.customerName) || '—'}</p>
-                    </div>
-                    <div className="text-right ml-3 shrink-0">
-                      <p className="font-mono text-xs font-medium text-emerald-600">{formatPeso(c.amount)}</p>
-                      <p className="text-xs text-zinc-400">{PAYMENT_METHOD_LABELS[c.method] ?? c.method}</p>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
         </>
       )}
+
+      {/* Today's collections list — all roles */}
+      <div className="bg-white border border-zinc-200 rounded-lg p-5 mb-6">
+        <h2 className="text-sm font-semibold text-zinc-950 mb-1 flex items-center gap-1.5">
+          <CoinIcon size={14} className="text-emerald-500" />
+          Today&apos;s Collections
+          {todayCollections.length > 0 && (
+            <span className="ml-auto text-xs font-mono font-medium text-emerald-600">
+              {formatPeso(todayCollectionTotal)}
+            </span>
+          )}
+        </h2>
+        <p className="text-xs text-zinc-400 mb-3">Payments recorded today</p>
+        {todayCollections.length === 0 ? (
+          <p className="text-sm text-zinc-400">No collections recorded today.</p>
+        ) : (
+          <div className="divide-y divide-zinc-100">
+            {todayCollections.map((c) => (
+              <Link
+                key={c.id}
+                href={`/transactions/${c.transactionId}`}
+                className="flex items-center justify-between py-2.5 hover:bg-zinc-50 -mx-1 px-1 rounded transition-colors duration-150"
+              >
+                <div className="min-w-0">
+                  <p className="font-mono text-xs font-medium text-zinc-950">#{c.txnNumber}</p>
+                  <p className="text-xs text-zinc-500 truncate">{toTitleCase(c.customerName) || '—'}</p>
+                </div>
+                <div className="text-right ml-3 shrink-0">
+                  <p className="font-mono text-xs font-medium text-emerald-600">{formatPeso(c.amount)}</p>
+                  <p className="text-xs text-zinc-400">{PAYMENT_METHOD_LABELS[c.method] ?? c.method}</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Upcoming pickups + Recent transactions */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
