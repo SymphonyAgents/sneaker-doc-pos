@@ -1,12 +1,42 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { api } from '@/lib/api';
+
+export const BRANCHES_KEY = ['branches'] as const;
 
 export function useBranchesQuery(activeOnly = false) {
   return useQuery({
-    queryKey: ['branches', activeOnly],
+    queryKey: [...BRANCHES_KEY, activeOnly],
     queryFn: () => api.branches.list(activeOnly),
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useCreateBranchMutation(onSuccess?: () => void) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => api.branches.create({ name }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: BRANCHES_KEY });
+      toast.success('Branch created');
+      onSuccess?.();
+    },
+    onError: (err: Error) => toast.error('Failed to create branch', { description: err.message }),
+  });
+}
+
+export function useUpdateBranchMutation(onSuccess?: () => void) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: number; name?: string; isActive?: boolean }) =>
+      api.branches.update(id, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: BRANCHES_KEY });
+      toast.success('Branch updated');
+      onSuccess?.();
+    },
+    onError: (err: Error) => toast.error('Failed to update branch', { description: err.message }),
   });
 }

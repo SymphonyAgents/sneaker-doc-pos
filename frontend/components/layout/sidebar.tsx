@@ -15,18 +15,20 @@ import {
   ListIcon,
   XIcon,
   UserIcon,
+  GitBranchIcon,
 } from '@phosphor-icons/react';
 import { createBrowserClient } from '@supabase/ssr';
 import { cn } from '@/lib/utils';
 import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
 
 const NAV = [
-  { href: '/dashboard', label: 'Dashboard', icon: ChartBarIcon, adminOnly: false },
-  { href: '/transactions', label: 'Transactions', icon: ReceiptIcon, adminOnly: false },
-  { href: '/services', label: 'Services', icon: WrenchIcon, adminOnly: true },
-  { href: '/promos', label: 'Promos', icon: TagIcon, adminOnly: true },
-  { href: '/expenses', label: 'Expenses', icon: CurrencyDollarIcon, adminOnly: true },
-  { href: '/audit', label: 'Audit Log', icon: ClockIcon, adminOnly: true },
+  { href: '/dashboard', label: 'Dashboard', icon: ChartBarIcon, adminOnly: false, superadminOnly: false },
+  { href: '/transactions', label: 'Transactions', icon: ReceiptIcon, adminOnly: false, superadminOnly: false },
+  { href: '/services', label: 'Services', icon: WrenchIcon, adminOnly: true, superadminOnly: false },
+  { href: '/promos', label: 'Promos', icon: TagIcon, adminOnly: true, superadminOnly: false },
+  { href: '/expenses', label: 'Expenses', icon: CurrencyDollarIcon, adminOnly: true, superadminOnly: false },
+  { href: '/audit', label: 'Audit Log', icon: ClockIcon, adminOnly: true, superadminOnly: false },
+  { href: '/branches', label: 'Branches', icon: GitBranchIcon, adminOnly: false, superadminOnly: true },
 ];
 
 export function Sidebar() {
@@ -35,7 +37,12 @@ export function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { data: currentUser } = useCurrentUserQuery();
   const isAdmin = currentUser?.userType === 'admin' || currentUser?.userType === 'superadmin';
-  const visibleNav = NAV.filter((item) => !item.adminOnly || isAdmin);
+  const isSuperadmin = currentUser?.userType === 'superadmin';
+  const visibleNav = NAV.filter((item) => {
+    if (item.superadminOnly) return isSuperadmin;
+    if (item.adminOnly) return isAdmin;
+    return true;
+  });
 
   async function handleSignOut() {
     const supabase = createBrowserClient(

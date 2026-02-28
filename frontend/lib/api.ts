@@ -122,5 +122,9 @@ export const api = {
   branches: {
     list: (activeOnly?: boolean) =>
       apiFetch<Branch[]>(`/branches${activeOnly ? '?active=1' : ''}`),
+    create: (body: { name: string }) =>
+      apiFetch<Branch>('/branches', { method: 'POST', body: JSON.stringify(body) }),
+    update: (id: number, body: Partial<{ name: string; isActive: boolean }>) =>
+      apiFetch<Branch>(`/branches/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   },
 };
