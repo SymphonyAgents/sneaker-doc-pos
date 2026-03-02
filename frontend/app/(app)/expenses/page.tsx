@@ -9,31 +9,76 @@ import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ExpenseForm } from '@/components/forms/expense-form';
-import { createExpenseColumns } from '@/columns/expenses-columns';
+import { createExpenseColumns, type ExpenseEditForm } from '@/columns/expenses-columns';
 import {
   useExpensesQuery,
   useExpensesSummaryQuery,
+  useUpdateExpenseMutation,
   useDeleteExpenseMutation,
 } from '@/hooks/useExpensesQuery';
+import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
 import type { Expense } from '@/lib/types';
+
+const EMPTY_EDIT: ExpenseEditForm = { category: '', note: '', method: '', amount: '' };
 
 export default function ExpensesPage() {
   const searchParams = useSearchParams();
   const [selectedDate, setSelectedDate] = useState(today());
   const [showForm, setShowForm] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [form, setForm] = useState<ExpenseEditForm>(EMPTY_EDIT);
 
   useEffect(() => {
     if (searchParams.get('new') === '1') setShowForm(true);
   }, [searchParams]);
 
+  const { data: currentUser } = useCurrentUserQuery();
+  const isAdmin = currentUser?.userType === 'admin' || currentUser?.userType === 'superadmin';
+
   const { data: expenses = [], isLoading } = useExpensesQuery(selectedDate);
   const { data: summary } = useExpensesSummaryQuery(selectedDate);
+  const updateMut = useUpdateExpenseMutation(selectedDate, () => {
+    setEditId(null);
+    setForm(EMPTY_EDIT);
+  });
   const deleteMut = useDeleteExpenseMutation(selectedDate);
 
+  const startEdit = (e: Expense) => {
+    setEditId(e.id);
+    setForm({
+      category: e.category ?? '',
+      note: e.note ?? '',
+      method: e.method ?? '',
+      amount: e.amount ?? '',
+    });
+    setShowForm(false);
+  };
+
+  const cancelEdit = () => {
+    setEditId(null);
+    setForm(EMPTY_EDIT);
+  };
+
   const columns = useMemo(
-    () => createExpenseColumns({ onDelete: setDeleteTarget }),
-    [],
+    () => createExpenseColumns({
+      onDelete: setDeleteTarget,
+      editId: isAdmin ? editId : null,
+      form,
+      setForm,
+      onUpdate: () => updateMut.mutate({
+        id: editId!,
+        category: form.category || undefined,
+        note: form.note || undefined,
+        method: form.method || undefined,
+        amount: form.amount || undefined,
+      }),
+      onCancelEdit: cancelEdit,
+      onStartEdit: isAdmin ? startEdit : undefined,
+      isAdmin,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [editId, form, isAdmin],
   );
 
   return (
