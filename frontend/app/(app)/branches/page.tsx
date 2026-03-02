@@ -11,7 +11,9 @@ import {
   useBranchesQuery,
   useCreateBranchMutation,
   useUpdateBranchMutation,
+  useDeleteBranchMutation,
 } from '@/hooks/useBranchesQuery';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import type { Branch } from '@/lib/types';
 
 interface EditForm {
@@ -27,6 +29,7 @@ export default function BranchesPage() {
   const [newForm, setNewForm] = useState<EditForm>(EMPTY_FORM);
   const [editId, setEditId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<EditForm>(EMPTY_FORM);
+  const [deleteTarget, setDeleteTarget] = useState<Branch | null>(null);
 
   const { data: branches = [], isLoading } = useBranchesQuery(false);
 
@@ -39,6 +42,8 @@ export default function BranchesPage() {
     setEditId(null);
     setEditForm(EMPTY_FORM);
   });
+
+  const deleteMut = useDeleteBranchMutation(() => setDeleteTarget(null));
 
   function startEdit(b: Branch) {
     setEditId(b.id);
@@ -74,6 +79,7 @@ export default function BranchesPage() {
       onCancelEdit: cancelEdit,
       onStartEdit: startEdit,
       onToggle: (id, isActive) => updateMut.mutate({ id, isActive }),
+      onDelete: setDeleteTarget,
       isSaving: updateMut.isPending,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -81,6 +87,16 @@ export default function BranchesPage() {
   );
 
   return (
+    <>
+    <ConfirmDialog
+      open={!!deleteTarget}
+      title="Delete branch?"
+      description={`Delete "${deleteTarget?.name}"? It will be deactivated and hidden from the system.`}
+      confirmLabel="Delete"
+      onConfirm={() => { if (deleteTarget) deleteMut.mutate(deleteTarget.id); }}
+      onCancel={() => setDeleteTarget(null)}
+      loading={deleteMut.isPending}
+    />
     <div>
       <PageHeader
         title="Branches"
@@ -154,5 +170,6 @@ export default function BranchesPage() {
         <DataTable columns={columns} data={branches} />
       )}
     </div>
+    </>
   );
 }

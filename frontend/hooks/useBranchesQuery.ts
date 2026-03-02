@@ -40,3 +40,16 @@ export function useUpdateBranchMutation(onSuccess?: () => void) {
     onError: (err: Error) => toast.error('Failed to update branch', { description: err.message }),
   });
 }
+
+export function useDeleteBranchMutation(onSuccess?: () => void) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.branches.update(id, { isActive: false }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: BRANCHES_KEY });
+      toast.success('Branch deleted');
+      onSuccess?.();
+    },
+    onError: (err: Error) => toast.error('Failed to delete branch', { description: err.message }),
+  });
+}

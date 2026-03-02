@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, and } from 'drizzle-orm';
 import { DrizzleService } from '../db/drizzle.service';
 import { users } from '../db/schema';
 import type { UserType } from '../db/constants';
@@ -48,7 +48,21 @@ export class UsersService {
   }
 
   async findAll() {
-    return this.drizzle.db.select().from(users).orderBy(asc(users.createdAt));
+    return this.drizzle.db
+      .select()
+      .from(users)
+      .where(eq(users.isActive, true))
+      .orderBy(asc(users.createdAt));
+  }
+
+  async remove(id: string) {
+    const user = await this.findById(id);
+    if (!user) throw new NotFoundException('User not found');
+
+    await this.drizzle.db
+      .update(users)
+      .set({ isActive: false })
+      .where(and(eq(users.id, id), eq(users.isActive, true)));
   }
 
   async updateUserType(id: string, userType: UserType) {

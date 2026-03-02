@@ -141,6 +141,7 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify({ branchId }),
       }),
+    delete: (id: string) => apiFetch<void>(`/users/${id}`, { method: 'DELETE' }),
   },
 
   branches: {

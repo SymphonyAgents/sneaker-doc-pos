@@ -3,11 +3,13 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   Request,
   UseGuards,
   NotFoundException,
+  HttpCode,
 } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -59,5 +61,13 @@ export class UsersController {
   @Roles('superadmin')
   updateBranch(@Param('id') id: string, @Body() body: { branchId: number }) {
     return this.usersService.updateBranch(id, body.branchId);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  @UseGuards(RolesGuard)
+  @Roles('superadmin')
+  remove(@Param('id') id: string) {
+    return this.usersService.remove(id);
   }
 }

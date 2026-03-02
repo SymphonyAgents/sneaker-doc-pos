@@ -1,7 +1,7 @@
 'use client';
 
 import { type ColumnDef } from '@tanstack/react-table';
-import { PencilSimpleIcon, CheckIcon, XIcon } from '@phosphor-icons/react';
+import { PencilSimpleIcon, CheckIcon, XIcon, TrashIcon } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import type { Branch } from '@/lib/types';
 
@@ -19,6 +19,7 @@ interface BranchesColumnsOptions {
   onCancelEdit: () => void;
   onStartEdit: (b: Branch) => void;
   onToggle: (id: number, isActive: boolean) => void;
+  onDelete: (b: Branch) => void;
   isSaving: boolean;
 }
 
@@ -30,6 +31,7 @@ export const createBranchesColumns = ({
   onCancelEdit,
   onStartEdit,
   onToggle,
+  onDelete,
   isSaving,
 }: BranchesColumnsOptions): ColumnDef<Branch>[] => [
   {
@@ -153,6 +155,12 @@ export const createBranchesColumns = ({
             className="p-1.5 text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 rounded transition-colors"
           >
             <PencilSimpleIcon size={13} />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(b); }}
+            className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded transition-all"
+          >
+            <TrashIcon size={14} />
           </button>
         </div>
       );

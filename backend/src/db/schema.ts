@@ -160,6 +160,7 @@ export const users = pgTable('users', {
   branchId: integer('branch_id').references(() => branches.id, {
     onDelete: 'set null',
   }),
+  isActive: boolean('is_active').default(true).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true })
     .defaultNow()
     .notNull(),
