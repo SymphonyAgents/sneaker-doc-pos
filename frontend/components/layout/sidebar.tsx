@@ -19,6 +19,7 @@ import {
   GitBranchIcon,
   UsersIcon,
   AddressBookIcon,
+  QrCodeIcon,
 } from '@phosphor-icons/react';
 import { createBrowserClient } from '@supabase/ssr';
 import { cn } from '@/lib/utils';
@@ -34,6 +35,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { QrScanDialog } from '@/components/ui/qr-scan-dialog';
 
 interface NavItem {
   href: string;
@@ -90,6 +92,7 @@ export function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showSignOutDialog, setShowSignOutDialog] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [showQrScanner, setShowQrScanner] = useState(false);
   const { data: currentUser } = useCurrentUserQuery();
   const isAdmin = currentUser?.userType === 'admin' || currentUser?.userType === 'superadmin';
   const isSuperadmin = currentUser?.userType === 'superadmin';
@@ -183,6 +186,13 @@ export function Sidebar() {
       )}
       <p className="px-2.5 text-xs text-zinc-400 mb-2">Philippine Peso (₱)</p>
       <button
+        onClick={() => { setMobileOpen(false); setShowQrScanner(true); }}
+        className="flex items-center gap-2.5 w-full px-2.5 py-2 rounded-md text-sm text-zinc-500 hover:text-zinc-950 hover:bg-zinc-100 transition-colors duration-150"
+      >
+        <QrCodeIcon size={16} />
+        Scan QR
+      </button>
+      <button
         onClick={() => setShowSignOutDialog(true)}
         className="flex items-center gap-2.5 w-full px-2.5 py-2 rounded-md text-sm text-zinc-500 hover:text-zinc-950 hover:bg-zinc-100 transition-colors duration-150"
       >
@@ -194,6 +204,8 @@ export function Sidebar() {
 
   return (
     <>
+      <QrScanDialog open={showQrScanner} onClose={() => setShowQrScanner(false)} />
+
       {/* Sign-out confirmation dialog */}
       <Dialog open={showSignOutDialog} onOpenChange={setShowSignOutDialog}>
         <DialogContent showCloseButton={false} className="max-w-sm">

@@ -134,7 +134,6 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
       disableUploadBefore: true,
       txnBalance,
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [loadingItemIds, uploadingItemIds, handleUploadClick, txnBalance],
   );
   const addPaymentMut = useAddPaymentMutation(id, () => {

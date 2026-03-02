@@ -23,6 +23,7 @@ export const EMAIL_TEMPLATES = {
   pickup_ready: 'pickup_ready',
   payment_reminder: 'payment_reminder',
   new_pickup_date: 'new_pickup_date',
+  claim_stub: 'claim_stub',
 } as const;
 
 export type EmailTemplateKey = typeof EMAIL_TEMPLATES[keyof typeof EMAIL_TEMPLATES];
@@ -31,6 +32,7 @@ export const EMAIL_TEMPLATE_LABELS: Record<EmailTemplateKey, string> = {
   pickup_ready: 'Shoes Ready for Pickup',
   payment_reminder: 'Payment Reminder',
   new_pickup_date: 'Updated Pickup Date',
+  claim_stub: 'Claim Stub',
 };
 
 function buildTemplate(key: EmailTemplateKey, ctx: TransactionEmailContext): EmailTemplate {
@@ -88,6 +90,28 @@ function buildTemplate(key: EmailTemplateKey, ctx: TransactionEmailContext): Ema
           '',
           `We appreciate your patience and will have your shoes ready by then.`,
           '',
+          `— Sneaker Doctor`,
+        ].join('\n'),
+      };
+
+    case EMAIL_TEMPLATES.claim_stub:
+      return {
+        subject: `Claim Stub — Transaction #${ctx.number} — Sneaker Doctor`,
+        body: [
+          `Hi ${name},`,
+          '',
+          `Thank you for choosing Sneaker Doctor! Here is your claim stub for reference.`,
+          '',
+          `Transaction: #${ctx.number}`,
+          `Pickup date: ${formatDate(ctx.pickupDate)}`,
+          `Total: ${formatPeso(ctx.total)}`,
+          ...(bal > 0
+            ? [`Balance due: ${formatPeso(bal)}`]
+            : [`Balance: Fully paid`]),
+          '',
+          `Please present your transaction number #${ctx.number} when picking up your shoes.`,
+          '',
+          `See you on ${formatDate(ctx.pickupDate)}!`,
           `— Sneaker Doctor`,
         ].join('\n'),
       };

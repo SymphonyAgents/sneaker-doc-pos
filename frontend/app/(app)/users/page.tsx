@@ -46,7 +46,6 @@ export default function UsersPage() {
       isSuperadmin,
       branches: branches as Branch[],
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [currentUser?.id, isSuperadmin, branches],
   );
 

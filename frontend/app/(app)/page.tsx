@@ -43,7 +43,7 @@ import { useBranchesQuery } from '@/hooks/useBranchesQuery';
 import { PageHeader } from '@/components/ui/page-header';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { toTitleCase } from '@/utils/text';
-import type { Transaction, ClaimPayment, TodayCollection } from '@/lib/types';
+import type { Transaction, ClaimPayment } from '@/lib/types';
 
 const ALL_QUICK_ACTIONS = [
   { label: 'New Transaction', href: '/transactions/new', icon: ReceiptIcon, adminOnly: false },

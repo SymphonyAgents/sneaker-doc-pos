@@ -25,7 +25,8 @@ import {
 import { CustomerLookupSection } from '@/components/transactions/CustomerLookupSection';
 import { TransactionItemCard, type PendingPhoto } from '@/components/transactions/TransactionItemCard';
 import { TransactionConfirmDialog } from '@/components/transactions/TransactionConfirmDialog';
-import type { Service, Promo, Customer } from '@/lib/types';
+import { ClaimStubDialog } from '@/components/transactions/ClaimStubDialog';
+import type { Service, Promo, Customer, Transaction } from '@/lib/types';
 import { calcItemPrice, calcRawTotal, findPromo, applyPromo } from '@/utils/pricing';
 import { PAYMENT_METHOD_LABELS } from '@/lib/utils';
 
@@ -104,6 +105,7 @@ export function NewTransactionForm() {
   const [pendingSubmit, setPendingSubmit] = useState<TransactionFormData | null>(null);
   const pendingSubmitStable = useRef<TransactionFormData | null>(null);
   if (pendingSubmit !== null) pendingSubmitStable.current = pendingSubmit;
+  const [createdTxn, setCreatedTxn] = useState<Transaction | null>(null);
 
   // Photo state — keyed by item field index
   const [pendingPhotos, setPendingPhotos] = useState<Map<number, PendingPhoto>>(() => new Map());
@@ -238,7 +240,8 @@ export function NewTransactionForm() {
       }
 
       toast.success('Transaction created');
-      router.push(`/transactions/${txn.id}`);
+      setPendingSubmit(null);
+      setCreatedTxn(txn);
     },
     onError: (err: Error) => {
       toast.error('Failed to create transaction', { description: err.message });
@@ -499,6 +502,14 @@ export function NewTransactionForm() {
           createMut.mutate(pendingSubmit);
         }}
         onCancel={() => { if (!isBusy) setPendingSubmit(null); }}
+      />
+
+      <ClaimStubDialog
+        open={createdTxn !== null}
+        txn={createdTxn}
+        onViewTransaction={() => {
+          if (createdTxn) router.push(`/transactions/${createdTxn.id}`);
+        }}
       />
     </div>
   );
