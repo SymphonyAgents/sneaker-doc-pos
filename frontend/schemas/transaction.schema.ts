@@ -20,6 +20,8 @@ export const transactionSchema = z.object({
   ),
   promoId: z.string().optional(),
   note: z.string().optional(),
+  paymentMethod: z.string().optional(),
+  paymentAmount: z.string().optional(),
   items: z.array(itemSchema).min(1, 'Add at least one item'),
 });
 
