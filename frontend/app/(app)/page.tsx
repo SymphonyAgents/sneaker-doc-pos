@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { toast } from 'sonner';
 import {
   ReceiptIcon,
   WrenchIcon,
@@ -10,13 +11,13 @@ import {
   CalendarIcon,
   CoinIcon,
   TrendUpIcon,
-  HourglassIcon,
   WalletIcon,
   DeviceMobileIcon,
   MoneyIcon,
   CreditCardIcon,
   BankIcon,
   PlusIcon,
+  QrCodeIcon,
 } from '@phosphor-icons/react';
 import {
   Dialog,
@@ -27,6 +28,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
+import { DepositHistoryDialog } from '@/components/deposits/DepositHistoryDialog';
+import { QrScanDialog } from '@/components/ui/qr-scan-dialog';
 import { formatPeso, formatDate, PAYMENT_METHOD_LABELS } from '@/lib/utils';
 import {
   useTransactionReportQuery,
@@ -124,6 +127,8 @@ export default function DashboardPage() {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1); // 0 = overall year
   const [branchFilter, setBranchFilter] = useState<string>('all');
+  const [showQrScanner, setShowQrScanner] = useState(false);
+  const [historyDialog, setHistoryDialog] = useState<{ open: boolean; method?: string }>({ open: false });
   const [depositDialog, setDepositDialog] = useState<string | null>(null);
   const [depositAmount, setDepositAmount] = useState('');
   const [depositError, setDepositError] = useState('');
@@ -148,7 +153,7 @@ export default function DashboardPage() {
     branchId,
     enabled: isAdmin,
   });
-  const { data: depositsData } = useDepositsQuery(year, month, branchId);
+  const { data: depositsData, isLoading: depositsLoading } = useDepositsQuery(year, month, branchId);
   const upsertDepositMut = useUpsertDepositMutation(year, month, branchId);
   const { data: todayCollections = [] } = useTodayCollectionsQuery();
 
@@ -242,131 +247,151 @@ export default function DashboardPage() {
       />
 
       {/* Quick actions */}
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        {quickActions.map(({ label, href, icon: Icon }) => (
-          <Link
-            key={href}
-            href={href}
-            className="flex items-center gap-2 bg-white border border-zinc-200 rounded-md px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 hover:border-zinc-300 transition-colors duration-150"
-          >
-            <Icon size={13} className="text-zinc-400 shrink-0" />
-            {label}
-          </Link>
-        ))}
+      <div className="flex items-center justify-between gap-2 mb-4">
+        <div className="flex flex-wrap items-center gap-2">
+          {quickActions.map(({ label, href, icon: Icon }) => (
+            <Link
+              key={href}
+              href={href}
+              className="flex items-center gap-2 bg-white border border-zinc-200 rounded-md px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 hover:border-zinc-300 transition-colors duration-150"
+            >
+              <Icon size={13} className="text-zinc-400 shrink-0" />
+              {label}
+            </Link>
+          ))}
+        </div>
+        <button
+          onClick={() => setShowQrScanner(true)}
+          className="flex items-center gap-2 bg-zinc-950 text-white rounded-md px-3.5 py-1.5 text-xs font-semibold hover:bg-zinc-800 transition-colors duration-150 shrink-0"
+        >
+          <QrCodeIcon size={14} weight="bold" />
+          Scan QR
+        </button>
       </div>
 
       {/* Admin: monthly stats */}
       {isAdmin && (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 md:gap-4 mb-6 md:mb-8">
-            <StatCard
-              label="Transactions"
+          {/* Layer 1: 3 metric cards — 1fr 1.6fr 1fr */}
+          <div
+            className="grid grid-cols-1 sm:grid-cols-[1fr_1.6fr_1fr] gap-3 mb-4"
+          >
+            {/* Transactions */}
+            <Link
               href="/transactions"
-              value={String(filtered.length)}
-              loading={reportLoading}
-              icon={ReceiptIcon}
-              iconClass="text-zinc-500"
-              iconBg="bg-zinc-100"
-            />
-            <StatCard
-              label="Total Revenue"
-              href="/transactions"
-              value={formatPeso(monthlyStats.totalRevenue)}
-              mono
-              loading={reportLoading}
-              icon={TrendUpIcon}
-              iconClass="text-emerald-600"
-              iconBg="bg-emerald-50"
-            />
-            <StatCard
-              label="Total Collected"
-              href="/transactions"
-              value={formatPeso(monthlyStats.totalPaid)}
-              mono
-              loading={reportLoading}
-              icon={WalletIcon}
-              iconClass="text-blue-600"
-              iconBg="bg-blue-50"
-            />
-            <StatCard
-              label="Outstanding"
-              href="/transactions"
-              value={formatPeso(monthlyStats.totalBalance)}
-              mono
-              loading={reportLoading}
-              icon={HourglassIcon}
-              iconClass="text-amber-600"
-              iconBg="bg-amber-50"
-            />
-            <StatCard
-              label="Net Income"
-              href="/expenses"
-              value={formatPeso(monthlyNet)}
-              mono
-              loading={reportLoading || expensesLoading}
-              icon={CoinIcon}
-              iconClass={monthlyNet >= 0 ? 'text-emerald-600' : 'text-red-500'}
-              iconBg={monthlyNet >= 0 ? 'bg-emerald-50' : 'bg-red-50'}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-4 md:mb-6">
-            {/* Expenses card */}
-            <div className="bg-white border border-zinc-200 rounded-lg p-5">
-              <div className="flex items-center justify-between mb-1">
-                <Link href="/expenses" className="text-sm font-semibold text-zinc-950 hover:text-blue-600 transition-colors duration-150">
-                  Expenses
-                </Link>
-                <div className="w-7 h-7 rounded-full flex items-center justify-center bg-red-50">
-                  <CurrencyDollarIcon size={13} className="text-red-500" />
-                </div>
+              className="bg-white border border-zinc-200 rounded-xl p-5 hover:border-zinc-300 transition-colors duration-150"
+            >
+              <div className="flex items-center gap-1.5 mb-3">
+                <ReceiptIcon size={13} className="text-zinc-400" />
+                <span className="text-xs font-medium text-zinc-400">Transactions</span>
               </div>
-              <p className="text-xs text-zinc-400 mb-2">Month total</p>
-              {expensesLoading ? (
-                <div className="h-8 w-24 bg-zinc-100 rounded animate-pulse" />
+              {reportLoading ? (
+                <div className="h-9 w-12 bg-zinc-100 rounded animate-pulse" />
+              ) : (
+                <p className="text-3xl font-semibold text-zinc-950">{filtered.length}</p>
+              )}
+            </Link>
+
+            {/* Total Revenue — wider middle */}
+            <div className="bg-white border border-zinc-200 rounded-xl p-5">
+              <div className="flex items-center gap-1.5 mb-3">
+                <TrendUpIcon size={13} className="text-zinc-400" />
+                <span className="text-xs font-medium text-zinc-400">Total Revenue</span>
+              </div>
+              {reportLoading ? (
+                <div className="h-9 w-36 bg-zinc-100 rounded animate-pulse mb-3" />
               ) : (
                 <>
-                  <p className="text-lg md:text-2xl font-mono font-semibold text-zinc-950 truncate">{formatPeso(totalExpenses)}</p>
-                  {expenses.length > 0 && (
-                    <p className="text-xs text-zinc-400 mt-1">{expenses.length} entries</p>
-                  )}
+                  <p className="text-3xl font-mono font-semibold text-zinc-950 mb-3">
+                    {formatPeso(monthlyStats.totalRevenue)}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
+                    <span className="flex items-center gap-1.5 text-xs text-zinc-500">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                      <span className="font-mono">{formatPeso(monthlyStats.totalPaid)}</span>
+                      {' '}collected
+                    </span>
+                    <span className="flex items-center gap-1.5 text-xs text-zinc-500">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                      <span className="font-mono">{formatPeso(monthlyStats.totalBalance)}</span>
+                      {' '}outstanding
+                    </span>
+                  </div>
                 </>
               )}
             </div>
 
-            {/* Payment method breakdown — 2x2 grid */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* Net Income */}
+            <Link
+              href="/expenses"
+              className="bg-white border border-zinc-200 rounded-xl p-5 hover:border-zinc-300 transition-colors duration-150"
+            >
+              <div className="flex items-center gap-1.5 mb-3">
+                <CoinIcon size={13} className="text-zinc-400" />
+                <span className="text-xs font-medium text-zinc-400">Net Income</span>
+                {!reportLoading && !expensesLoading && monthlyStats.totalRevenue > 0 && (
+                  <span className={`ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                    monthlyNet >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'
+                  }`}>
+                    {monthlyNet >= 0 ? '+' : ''}{((monthlyNet / monthlyStats.totalRevenue) * 100).toFixed(1)}%
+                  </span>
+                )}
+              </div>
+              {reportLoading || expensesLoading ? (
+                <div className="h-9 w-28 bg-zinc-100 rounded animate-pulse" />
+              ) : (
+                <>
+                  <p className={`text-3xl font-mono font-semibold mb-3 ${monthlyNet >= 0 ? 'text-zinc-950' : 'text-red-500'}`}>
+                    {formatPeso(monthlyNet)}
+                  </p>
+                  <span className="text-xs font-medium text-red-500">
+                    {formatPeso(totalExpenses)} expenses
+                  </span>
+                </>
+              )}
+            </Link>
+          </div>
+
+          {/* Section divider */}
+          <p className="text-xs font-medium text-zinc-400 mb-2 mt-2">Collection Channels</p>
+
+          {/* Layer 2: single strip with 1px vertical dividers */}
+          <div className="bg-white border border-zinc-200 rounded-xl mb-6 overflow-hidden">
+            <div className="flex flex-col sm:flex-row divide-y sm:divide-y-0 sm:divide-x divide-zinc-100">
               {METHOD_ORDER.map((key) => {
                 const config = PAYMENT_METHOD_CONFIG[key];
-                const amount = parseFloat(collectionsSummary?.[key] ?? '0');
-                const depositedAmount = parseFloat(depositsData?.[key] ?? '0');
+                const amount = parseFloat(depositsData?.[key] ?? '0');
                 return (
-                  <div key={key} className="bg-white border border-zinc-200 rounded-lg p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center ${config.iconBg}`}>
-                        <config.icon size={12} className={config.iconClass} />
+                  <button
+                    key={key}
+                    onClick={() => setHistoryDialog({ open: true, method: key })}
+                    className="group flex-1 px-5 py-4 text-left hover:bg-zinc-50/60 transition-colors duration-150"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-1.5">
+                        <config.icon size={13} className={config.iconClass} />
+                        <span className="text-xs font-medium text-zinc-500">{config.label}</span>
                       </div>
-                      <span className="text-xs text-zinc-400">{config.label}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDepositDialog(key);
+                          setDepositAmount('');
+                          setDepositError('');
+                        }}
+                        className="flex items-center px-2.5 py-1.5 -mr-2 text-[11px] font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors duration-150"
+                      >
+                        + Add
+                      </button>
                     </div>
-                    {collectionsLoading ? (
+                    {depositsLoading ? (
                       <div className="h-5 w-16 bg-zinc-100 rounded animate-pulse" />
                     ) : (
-                      <p className="font-mono text-base font-semibold text-zinc-950">{formatPeso(amount)}</p>
+                      <p className={`font-mono text-lg font-semibold ${amount > 0 ? 'text-zinc-950' : 'text-zinc-300'}`}>
+                        {formatPeso(amount)}
+                      </p>
                     )}
-                    <div className="mt-2 pt-2 border-t border-zinc-100">
-                      <p className="text-xs text-zinc-400 mb-1">Deposited</p>
-                      <div className="flex items-center justify-between">
-                        <span className="font-mono text-xs text-zinc-700">{formatPeso(depositedAmount)}</span>
-                        <button
-                          onClick={() => { setDepositDialog(key); setDepositAmount(''); setDepositError(''); }}
-                          className="flex items-center gap-1 text-[10px] text-blue-600 hover:text-blue-700 transition-colors"
-                        >
-                          <PlusIcon size={10} weight="bold" />
-                          Add
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -499,7 +524,20 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Deposit dialog */}
+      <QrScanDialog open={showQrScanner} onClose={() => setShowQrScanner(false)} />
+
+      {/* Deposit history dialog */}
+      <DepositHistoryDialog
+        open={historyDialog.open}
+        onClose={() => setHistoryDialog({ open: false })}
+        year={year}
+        month={month}
+        monthLabel={month === 0 ? `${year} Overall` : `${MONTHS[(month || 1) - 1]} ${year}`}
+        branchId={branchId}
+        initialMethod={historyDialog.method}
+      />
+
+      {/* Add deposit dialog */}
       <Dialog
         open={depositDialog !== null}
         onOpenChange={(open) => { if (!open && !upsertDepositMut.isPending) setDepositDialog(null); }}
@@ -542,7 +580,7 @@ export default function DashboardPage() {
                 if (isNaN(amt) || amt <= 0) { setDepositError('Enter a valid amount'); return; }
                 upsertDepositMut.mutate(
                   { method: depositDialog!, amount: depositAmount },
-                  { onSuccess: () => setDepositDialog(null) },
+                  { onSuccess: () => { setDepositDialog(null); toast.success('Deposit recorded'); } },
                 );
               }}
             >

@@ -159,6 +159,15 @@ export function Sidebar() {
                   </Link>
                 );
               })}
+              {gi === 0 && (
+                <button
+                  onClick={() => { setMobileOpen(false); setShowQrScanner(true); }}
+                  className="flex items-center gap-2.5 w-full px-2.5 py-2 rounded-md text-sm text-zinc-500 hover:text-zinc-950 hover:bg-zinc-100 transition-colors duration-150"
+                >
+                  <QrCodeIcon size={16} />
+                  Scan QR
+                </button>
+              )}
             </div>
           </div>
         );
@@ -185,13 +194,6 @@ export function Sidebar() {
         </div>
       )}
       <p className="px-2.5 text-xs text-zinc-400 mb-2">Philippine Peso (₱)</p>
-      <button
-        onClick={() => { setMobileOpen(false); setShowQrScanner(true); }}
-        className="flex items-center gap-2.5 w-full px-2.5 py-2 rounded-md text-sm text-zinc-500 hover:text-zinc-950 hover:bg-zinc-100 transition-colors duration-150"
-      >
-        <QrCodeIcon size={16} />
-        Scan QR
-      </button>
       <button
         onClick={() => setShowSignOutDialog(true)}
         className="flex items-center gap-2.5 w-full px-2.5 py-2 rounded-md text-sm text-zinc-500 hover:text-zinc-950 hover:bg-zinc-100 transition-colors duration-150"
