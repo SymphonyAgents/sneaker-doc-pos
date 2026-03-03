@@ -72,7 +72,6 @@ export default function ExpensesPage() {
       onStartEdit: isAdmin ? startEdit : undefined,
       isAdmin,
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [isAdmin],
   );
 
