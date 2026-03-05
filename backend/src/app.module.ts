@@ -5,6 +5,7 @@ import { SupabaseModule } from './supabase/supabase.module';
 import { AuthModule } from './auth/auth.module';
 import { AuditModule } from './audit/audit.module';
 import { EmailModule } from './email/email.module';
+import { SmsModule } from './sms/sms.module';
 import { UsersModule } from './users/users.module';
 import { ServicesModule } from './services/services.module';
 import { PromosModule } from './promos/promos.module';
@@ -14,6 +15,7 @@ import { CustomersModule } from './customers/customers.module';
 import { BranchesModule } from './branches/branches.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { DepositsModule } from './deposits/deposits.module';
+import { ReportsModule } from './reports/reports.module';
 
 @Module({
   imports: [
@@ -23,6 +25,7 @@ import { DepositsModule } from './deposits/deposits.module';
     AuthModule,
     AuditModule,
     EmailModule,
+    SmsModule,
     UsersModule,
     ServicesModule,
     PromosModule,
@@ -32,6 +35,7 @@ import { DepositsModule } from './deposits/deposits.module';
     BranchesModule,
     UploadsModule,
     DepositsModule,
+    ReportsModule,
   ],
 })
 export class AppModule {}

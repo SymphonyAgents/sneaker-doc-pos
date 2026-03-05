@@ -27,19 +27,19 @@ export function Lightbox({ open, src, alt = 'Photo', onClose }: LightboxProps) {
     >
       <button
         onClick={onClose}
-        className="absolute top-4 right-4 p-2 text-white/60 hover:text-white transition-colors duration-150"
+        className="absolute top-safe-top top-4 right-4 z-10 p-2 text-white/60 hover:text-white transition-colors duration-150"
       >
-        <XIcon size={20} />
+        <XIcon size={22} />
       </button>
       <div
-        className="max-w-3xl max-h-[90vh] w-full mx-6"
+        className="w-full px-4 max-w-3xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={src}
           alt={alt}
-          className="w-full h-full object-contain rounded-lg max-h-[90vh]"
+          className="w-full object-contain rounded-lg max-h-[85vh]"
         />
       </div>
     </div>

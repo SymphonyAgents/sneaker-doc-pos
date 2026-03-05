@@ -13,6 +13,7 @@ import type {
   Branch,
   TodayCollection,
   DepositAuditEntry,
+  ReportSummary,
 } from './types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
@@ -78,6 +79,8 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(body),
       }),
+    sendPickupReadySms: (id: number) =>
+      apiFetch<{ phone: string }>(`/transactions/${id}/sms/pickup-ready`, { method: 'POST' }),
     delete: (id: number) => apiFetch<void>(`/transactions/${id}`, { method: 'DELETE' }),
   },
 
@@ -182,5 +185,13 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(body),
       }),
+  },
+
+  reports: {
+    summary: (year: number, month: number, branchId?: number) => {
+      const qs = new URLSearchParams({ year: String(year), month: String(month) });
+      if (branchId) qs.set('branchId', String(branchId));
+      return apiFetch<ReportSummary>(`/reports/summary?${qs}`);
+    },
   },
 };

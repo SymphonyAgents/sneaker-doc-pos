@@ -30,7 +30,7 @@ const PAYMENT_METHODS = [
   { value: 'cash', label: 'Cash' },
   { value: 'gcash', label: 'GCash' },
   { value: 'card', label: 'Card' },
-  { value: 'bank_deposit', label: 'Bank Deposit' },
+  { value: 'bank_deposit', label: 'Bank Transfer' },
 ] as const;
 
 const EMPTY_EDIT: ExpenseEditForm = { category: '', note: '', method: '', amount: '' };

@@ -129,6 +129,12 @@ export class TransactionsController {
   }
 
   @UseGuards(SupabaseAuthGuard)
+  @Post(':id/sms/pickup-ready')
+  sendPickupReadySms(@Param('id', ParseIntPipe) id: number) {
+    return this.transactionsService.sendPickupReadySms(id);
+  }
+
+  @UseGuards(SupabaseAuthGuard)
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number, @Req() req: AuthedRequest) {
     return this.transactionsService.remove(id, req.user?.id);

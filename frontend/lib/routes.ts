@@ -11,6 +11,7 @@ export const ROUTES = {
   BRANCHES: '/branches',
   USERS: '/users',
   CUSTOMERS: '/customers',
+  REPORTS: '/reports',
   ONBOARDING: '/onboarding',
 } as const;
 
@@ -25,6 +26,7 @@ export const PROTECTED_ROUTES: string[] = [
   ROUTES.BRANCHES,
   ROUTES.USERS,
   ROUTES.CUSTOMERS,
+  ROUTES.REPORTS,
   ROUTES.ONBOARDING,
 ];
 

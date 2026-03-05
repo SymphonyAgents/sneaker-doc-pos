@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { type ColumnDef } from '@tanstack/react-table';
-import { CameraIcon } from '@phosphor-icons/react';
+import { CameraIcon, UploadSimpleIcon } from '@phosphor-icons/react';
+import { Spinner } from '@/components/ui/spinner';
 import { formatPeso, STATUS_COLORS, cn } from '@/lib/utils';
 import { toTitleCase } from '@/utils/text';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -38,10 +39,13 @@ interface TransactionItemColumnsOptions {
   onStatusChange: (itemId: number, status: ItemStatus) => void;
   onImageClick?: (url: string, label: string) => void;
   onUploadClick?: (itemId: number, type: 'before' | 'after') => void;
+  onCameraClick?: (itemId: number, type: 'before' | 'after') => void;
   loadingItemIds?: Set<number>;
   uploadingItemIds?: Set<string>; // `${itemId}-${type}`
   disableUploadBefore?: boolean;
   txnBalance?: number;
+  // ID of the single remaining claimable item — only this one is balance-gated
+  lastClaimableItemId?: number | null;
 }
 
 const ITEM_STATUSES = ITEM_STATUS_VALUES;
@@ -53,12 +57,14 @@ function ImageCell({
   uploading,
   onImageClick,
   onUploadClick,
+  onCameraClick,
 }: {
   url: string | null;
   label: string;
   uploading?: boolean;
   onImageClick?: (url: string, label: string) => void;
   onUploadClick?: () => void;
+  onCameraClick?: () => void;
 }) {
   const [loaded, setLoaded] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -70,18 +76,40 @@ function ImageCell({
 
   if (uploading) {
     return (
-      <div className="w-16 h-16 rounded border border-zinc-200 flex items-center justify-center bg-zinc-50 animate-pulse">
-        <CameraIcon size={18} className="text-zinc-400" />
+      <div className="flex gap-1.5">
+        <div className="w-11 h-11 flex items-center justify-center border border-dashed border-zinc-300 rounded-lg bg-zinc-50">
+          <Spinner />
+        </div>
       </div>
     );
   }
   if (!url) {
-    if (!onUploadClick) {
+    if (!onUploadClick && !onCameraClick) {
       return <span className="text-zinc-400 text-xs">—</span>;
+    }
+    if (onUploadClick && onCameraClick) {
+      return (
+        <div className="flex gap-1.5">
+          <button
+            title="Take Photo"
+            onClick={(e) => { e.stopPropagation(); onCameraClick(); }}
+            className="w-11 h-11 flex items-center justify-center bg-white border border-dashed border-zinc-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors group"
+          >
+            <CameraIcon size={20} className="text-zinc-500 group-hover:text-blue-600 transition-colors" />
+          </button>
+          <button
+            title="Upload"
+            onClick={(e) => { e.stopPropagation(); onUploadClick(); }}
+            className="w-11 h-11 flex items-center justify-center bg-white border border-dashed border-zinc-300 rounded-lg hover:border-zinc-400 hover:bg-zinc-50 transition-colors group"
+          >
+            <UploadSimpleIcon size={20} className="text-zinc-500 group-hover:text-zinc-700 transition-colors" />
+          </button>
+        </div>
+      );
     }
     return (
       <button
-        onClick={(e) => { e.stopPropagation(); onUploadClick(); }}
+        onClick={(e) => { e.stopPropagation(); (onUploadClick ?? onCameraClick)?.(); }}
         className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-dashed border-zinc-300 rounded-md hover:border-blue-400 hover:bg-blue-50 transition-colors group"
       >
         <CameraIcon size={13} className="text-zinc-400 group-hover:text-blue-500 transition-colors shrink-0" />
@@ -116,7 +144,7 @@ function ImageCell({
   );
 }
 
-export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onUploadClick, loadingItemIds, uploadingItemIds, disableUploadBefore, txnBalance }: TransactionItemColumnsOptions): ColumnDef<TransactionItem>[] => [
+export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onUploadClick, onCameraClick, loadingItemIds, uploadingItemIds, disableUploadBefore, txnBalance, lastClaimableItemId }: TransactionItemColumnsOptions): ColumnDef<TransactionItem>[] => [
   {
     accessorKey: 'shoeDescription',
     header: 'Shoe',
@@ -185,15 +213,19 @@ export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onU
   {
     accessorKey: 'afterImageUrl',
     header: 'After',
-    cell: ({ row }) => (
-      <ImageCell
-        url={row.original.afterImageUrl}
-        label="After"
-        uploading={uploadingItemIds?.has(`${row.original.id}-after`)}
-        onImageClick={onImageClick}
-        onUploadClick={row.original.status === ITEM_STATUS.CANCELLED ? undefined : () => onUploadClick?.(row.original.id, 'after')}
-      />
-    ),
+    cell: ({ row }) => {
+      const cancelled = row.original.status === ITEM_STATUS.CANCELLED;
+      return (
+        <ImageCell
+          url={row.original.afterImageUrl}
+          label="After"
+          uploading={uploadingItemIds?.has(`${row.original.id}-after`)}
+          onImageClick={onImageClick}
+          onUploadClick={cancelled ? undefined : () => onUploadClick?.(row.original.id, 'after')}
+          onCameraClick={cancelled ? undefined : () => onCameraClick?.(row.original.id, 'after')}
+        />
+      );
+    },
   },
   {
     accessorKey: 'status',
@@ -210,8 +242,10 @@ export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onU
         return <StatusBadge status={row.original.status} />;
       }
 
-      const hasBalance = (txnBalance ?? 0) > 0;
       const missingAfter = !row.original.afterImageUrl;
+      // Balance only blocks the very last claimable item — others can be claimed freely
+      const isLastClaimable = lastClaimableItemId === row.original.id;
+      const balanceBlocked = isLastClaimable && (txnBalance ?? 0) > 0;
 
       return (
         <Select
@@ -219,7 +253,7 @@ export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onU
           onValueChange={(v) => {
             if (v === ITEM_STATUS.CLAIMED) {
               if (missingAfter) { return; }
-              if (hasBalance) { return; }
+              if (balanceBlocked) { return; }
             }
             onStatusChange(row.original.id, v as ItemStatus);
           }}
@@ -229,7 +263,7 @@ export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onU
           </SelectTrigger>
           <SelectContent position="popper">
             {ITEM_STATUSES.map((s) => {
-              const disableClaimed = s === ITEM_STATUS.CLAIMED && (missingAfter || hasBalance);
+              const disableClaimed = s === ITEM_STATUS.CLAIMED && (missingAfter || balanceBlocked);
               return (
                 <SelectItem
                   key={s}
@@ -239,8 +273,8 @@ export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onU
                   title={
                     s === ITEM_STATUS.CLAIMED && missingAfter
                       ? 'Upload after photo before claiming'
-                      : s === ITEM_STATUS.CLAIMED && hasBalance
-                        ? 'Settle balance before claiming'
+                      : s === ITEM_STATUS.CLAIMED && balanceBlocked
+                        ? 'Settle balance before claiming last item'
                         : undefined
                   }
                 >

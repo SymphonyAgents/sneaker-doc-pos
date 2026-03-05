@@ -73,7 +73,7 @@ const PAYMENT_METHOD_CONFIG: Record<string, {
   iconBg: string;
 }> = {
   gcash: { label: 'GCash', icon: DeviceMobileIcon, iconClass: 'text-blue-600', iconBg: 'bg-blue-50' },
-  bank_deposit: { label: 'Bank Deposit', icon: BankIcon, iconClass: 'text-amber-600', iconBg: 'bg-amber-50' },
+  bank_deposit: { label: 'Bank Transfer', icon: BankIcon, iconClass: 'text-amber-600', iconBg: 'bg-amber-50' },
   cash: { label: 'Cash', icon: MoneyIcon, iconClass: 'text-emerald-600', iconBg: 'bg-emerald-50' },
   card: { label: 'Card', icon: CreditCardIcon, iconClass: 'text-violet-600', iconBg: 'bg-violet-50' },
 };

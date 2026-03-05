@@ -2,7 +2,7 @@
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { ArrowLeftIcon, PlusIcon, EnvelopeIcon } from '@phosphor-icons/react';
+import { ArrowLeftIcon, PlusIcon, EnvelopeIcon, PaperPlaneTiltIcon } from '@phosphor-icons/react';
 import { Lightbox } from '@/components/ui/lightbox';
 import Link from 'next/link';
 import { formatPeso, formatDate, formatDatetime, formatAddress, PAYMENT_METHOD_LABELS, cn } from '@/lib/utils';
@@ -37,6 +37,7 @@ import { useUploadPhotoMutation } from '@/hooks/useUploadPhoto';
 import { PAYMENT_METHOD_VALUES, TRANSACTION_STATUS } from '@/lib/constants';
 import { toPng } from 'html-to-image';
 import { toast } from 'sonner';
+import { api } from '@/lib/api';
 import { generateGmailLink, generateGmailLinkNoBody, EMAIL_TEMPLATES, EMAIL_TEMPLATE_LABELS } from '@/utils/email';
 import { ClaimStubPreview } from '@/components/transactions/ClaimStubPreview';
 import type { EmailTemplateKey } from '@/utils/email';
@@ -55,8 +56,12 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const [lightbox, setLightbox] = useState<{ src: string; label: string } | null>(null);
   const [uploadingItemIds, setUploadingItemIds] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const pendingUploadRef = useRef<{ itemId: number; type: 'before' | 'after' } | null>(null);
   const stubRef = useRef<HTMLDivElement>(null);
+
+  const [smsDialogOpen, setSmsDialogOpen] = useState(false);
+  const [smsSending, setSmsSending] = useState(false);
 
   const [rescheduleValue, setRescheduleValue] = useState('');
   const [noteValue, setNoteValue] = useState('');
@@ -93,6 +98,11 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
     fileInputRef.current?.click();
   }, []);
 
+  const handleCameraClick = useCallback((itemId: number, type: 'before' | 'after') => {
+    pendingUploadRef.current = { itemId, type };
+    cameraInputRef.current?.click();
+  }, []);
+
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -121,6 +131,31 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
 
   const txnBalance = txn ? parseFloat(txn.total) - parseFloat(txn.paid) : 0;
 
+  // The single remaining non-claimed, non-cancelled item — balance gates only this one
+  const lastClaimableItemId = useMemo(() => {
+    if (!txn?.items) return null;
+    const claimable = txn.items.filter(
+      (i) => i.status !== 'claimed' && i.status !== 'cancelled',
+    );
+    return claimable.length === 1 ? claimable[0].id : null;
+  }, [txn?.items]);
+
+  async function handleSendPickupSms() {
+    if (!txn) return;
+    setSmsDialogOpen(true);
+    setSmsSending(true);
+    try {
+      await api.transactions.sendPickupReadySms(txn.id);
+      setSmsDialogOpen(false);
+      toast.success(`SMS sent to ${txn.customerPhone}`);
+    } catch {
+      setSmsDialogOpen(false);
+      toast.error('Failed to send SMS. Please try again.');
+    } finally {
+      setSmsSending(false);
+    }
+  }
+
   const itemColumns = useMemo(
     () => createTransactionItemColumns({
       onStatusChange: (itemId, status) => {
@@ -135,12 +170,14 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
       },
       onImageClick: (src, label) => setLightbox({ src, label }),
       onUploadClick: handleUploadClick,
+      onCameraClick: handleCameraClick,
       loadingItemIds,
       uploadingItemIds,
       disableUploadBefore: true,
       txnBalance,
+      lastClaimableItemId,
     }),
-    [loadingItemIds, uploadingItemIds, handleUploadClick, txnBalance],
+    [loadingItemIds, uploadingItemIds, handleUploadClick, handleCameraClick, txnBalance, lastClaimableItemId],
   );
   const addPaymentMut = useAddPaymentMutation(id, () => {
     setPaymentDialogOpen(false);
@@ -199,6 +236,12 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                 <p className="text-xs text-zinc-400">Original Pickup</p>
                 <p className="text-sm text-zinc-700">{formatDate(txn.pickupDate)}</p>
               </div>
+              {txn.staffNickname && (
+                <div>
+                  <p className="text-xs text-zinc-400">Staff</p>
+                  <p className="text-sm text-zinc-700">{txn.staffNickname}</p>
+                </div>
+              )}
               {txn.newPickupDate && (
                 <div>
                   <p className="text-xs text-amber-600">Rescheduled</p>
@@ -516,7 +559,45 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
               />
               <p className="text-xs font-mono text-zinc-400">#{txn.number}</p>
             </div>
+            {txn.customerPhone && (
+              <button
+                type="button"
+                onClick={handleSendPickupSms}
+                className="mt-4 flex items-center justify-center gap-2 w-full px-3 py-2 text-sm font-medium bg-zinc-200 text-zinc-800 rounded-md hover:bg-zinc-300 transition-colors duration-150"
+              >
+                <PaperPlaneTiltIcon size={13} />
+                Send SMS — Ready for Pickup
+              </button>
+            )}
           </div>
+
+          {/* SMS sending dialog */}
+          <Dialog open={smsDialogOpen} onOpenChange={(o) => { if (!smsSending) setSmsDialogOpen(o); }}>
+            <DialogContent className="bg-white sm:max-w-xs">
+              <div className="flex flex-col items-center gap-4 py-6 px-4 text-center">
+                <div
+                  style={{
+                    animation: 'sms-plane 1.2s ease-in-out infinite',
+                  }}
+                >
+                  <PaperPlaneTiltIcon size={40} className="text-zinc-950" weight="fill" />
+                </div>
+                <style>{`
+                  @keyframes sms-plane {
+                    0%   { transform: translate(0, 0) rotate(-10deg); opacity: 1; }
+                    50%  { transform: translate(6px, -8px) rotate(10deg); opacity: 0.7; }
+                    100% { transform: translate(0, 0) rotate(-10deg); opacity: 1; }
+                  }
+                `}</style>
+                <div>
+                  <p className="text-sm font-medium text-zinc-950">Sending SMS</p>
+                  <p className="text-xs text-zinc-400 mt-1">
+                    Notifying {txn.customerName ?? 'customer'} that their shoes are ready for pickup.
+                  </p>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           {/* Email customer */}
           {txn.customerEmail && (
@@ -538,7 +619,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                 </Select>
                 <button
                   type="button"
-                  className="flex items-center justify-center gap-2 w-full px-3 py-2 text-sm font-medium bg-zinc-950 text-white rounded-md hover:bg-zinc-800 transition-colors duration-150"
+                  className="flex items-center justify-center gap-2 w-full px-3 py-2 text-sm font-medium bg-zinc-200 text-zinc-800 rounded-md hover:bg-zinc-300 transition-colors duration-150"
                   onClick={async () => {
                     if (emailTemplate === EMAIL_TEMPLATES.claim_stub) {
                       const link = generateGmailLinkNoBody(txn, EMAIL_TEMPLATES.claim_stub);
@@ -574,11 +655,19 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
         </div>
       </div>
 
-      {/* Hidden file input — triggered programmatically by handleUploadClick */}
+      {/* Hidden file inputs — triggered programmatically */}
       <input
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
         className="hidden"
         onChange={handleFileChange}
       />

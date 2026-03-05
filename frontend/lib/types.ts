@@ -101,6 +101,7 @@ export interface Transaction {
   createdAt: string;
   claimedAt: string | null;
   updatedAt: string | null;
+  staffNickname?: string | null;
   promo?: Promo | null;
   items?: TransactionItem[];
   payments?: ClaimPayment[];
@@ -172,4 +173,43 @@ export interface TodayCollection {
   paidAt: string;
   txnNumber: string;
   customerName: string | null;
+}
+
+export interface ReportSummary {
+  collections: {
+    cash: string;
+    gcash: string;
+    card: string;
+    bank_deposit: string;
+    total: string;
+  };
+  expenses: {
+    total: string;
+    items: Expense[];
+  };
+  transactions: {
+    total: number;
+    claimed: number;
+    cancelled: number;
+    pending: number;
+    in_progress: number;
+    done: number;
+  };
+  shoesCount: number;
+  net: string;
+  topServices: {
+    name: string;
+    count: number;
+    revenue: string;
+  }[];
+  txnList: {
+    id: number;
+    number: string;
+    customerName: string | null;
+    createdAt: string;
+    status: TransactionStatus;
+    total: string;
+    paid: string;
+    itemCount: number;
+  }[];
 }

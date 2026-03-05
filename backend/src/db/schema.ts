@@ -85,10 +85,14 @@ export const transactions = pgTable('transactions', {
   branchId: integer('branch_id').references(() => branches.id, {
     onDelete: 'set null',
   }),
+  staffId: uuid('staff_id').references(() => users.id, {
+    onDelete: 'set null',
+  }),
   createdAt: timestamp('created_at', { withTimezone: true })
     .defaultNow()
     .notNull(),
   claimedAt: timestamp('claimed_at', { withTimezone: true }), // auto-set when status transitions to 'claimed'
+  deletedAt: timestamp('deleted_at', { withTimezone: true }), // soft delete — null = active
   updatedAt: timestamp('updated_at', { withTimezone: true }),
 });
 
@@ -136,6 +140,7 @@ export const expenses = pgTable('expenses', {
   method: varchar('method', { length: 50 }), // cash | gcash | card | bank_deposit
   source: varchar('source', { length: 20 }).default('pos').notNull(), // pos | admin
   amount: bigint('amount', { mode: 'number' }).notNull(),
+  staffId: uuid('staff_id').references(() => users.id, { onDelete: 'set null' }), // null = admin expense
   createdAt: timestamp('created_at', { withTimezone: true })
     .defaultNow()
     .notNull(),
@@ -179,6 +184,13 @@ export const deposits = pgTable('deposits', {
 export const users = pgTable('users', {
   id: uuid('id').primaryKey(), // matches auth.users.id
   email: varchar('email', { length: 255 }).notNull(),
+  nickname: varchar('nickname', { length: 100 }),
+  fullName: varchar('full_name', { length: 255 }),
+  contactNumber: varchar('contact_number', { length: 50 }),
+  birthday: date('birthday'),
+  address: varchar('address', { length: 500 }),
+  emergencyContactName: varchar('emergency_contact_name', { length: 255 }),
+  emergencyContactNumber: varchar('emergency_contact_number', { length: 50 }),
   userType: varchar('user_type', { length: 20 }).default('staff').notNull(), // admin | staff | superadmin
   branchId: integer('branch_id').references(() => branches.id, {
     onDelete: 'set null',
@@ -207,6 +219,21 @@ export const auditLog = pgTable('audit_log', {
     onDelete: 'set null',
   }),
   details: jsonb('details'),
+});
+
+// ---------------------------------------------------------------------------
+// staff_documents
+// ---------------------------------------------------------------------------
+export const staffDocuments = pgTable('staff_documents', {
+  id: serial('id').primaryKey(),
+  staffId: uuid('staff_id')
+    .references(() => users.id, { onDelete: 'cascade' })
+    .notNull(),
+  url: varchar('url', { length: 1000 }).notNull(),
+  label: varchar('label', { length: 255 }),
+  uploadedAt: timestamp('uploaded_at', { withTimezone: true })
+    .defaultNow()
+    .notNull(),
 });
 
 // ---------------------------------------------------------------------------

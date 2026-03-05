@@ -23,6 +23,7 @@ import {
   customers,
   promos,
   services,
+  users as usersTable, // alias to avoid conflict with this.users (UsersService)
 } from '../db/schema';
 import {
   TRANSACTION_STATUS,
@@ -31,6 +32,7 @@ import {
 } from '../db/constants';
 import { AuditService } from '../audit/audit.service';
 import { UsersService } from '../users/users.service';
+import { SmsService } from '../sms/sms.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { AddPaymentDto } from './dto/add-payment.dto';
@@ -58,6 +60,7 @@ export class TransactionsService {
     private readonly drizzle: DrizzleService,
     private readonly audit: AuditService,
     private readonly users: UsersService,
+    private readonly sms: SmsService,
   ) {}
 
   // Generate next zero-padded transaction number using a DB sequence-safe query
@@ -108,9 +111,10 @@ export class TransactionsService {
 
   async findOne(id: number) {
     const [row] = await this.drizzle.db
-      .select({ txn: transactions, promo: promos })
+      .select({ txn: transactions, promo: promos, staff: usersTable })
       .from(transactions)
       .leftJoin(promos, eq(transactions.promoId, promos.id))
+      .leftJoin(usersTable, eq(transactions.staffId, usersTable.id))
       .where(eq(transactions.id, id));
     if (!row) throw new NotFoundException(`Transaction ${id} not found`);
 
@@ -183,6 +187,7 @@ export class TransactionsService {
       customerBarangay: customerAddress?.barangay ?? null,
       customerCity: customerAddress?.city ?? null,
       customerProvince: customerAddress?.province ?? null,
+      staffNickname: row.staff?.nickname ?? null,
     };
   }
 
@@ -228,6 +233,7 @@ export class TransactionsService {
         paid: toScaled(dto.paid ?? '0'),
         promoId: dto.promoId ?? null,
         branchId: branchId ?? null,
+        staffId: performedBy ?? null,
         updatedAt: new Date(),
       })
       .returning();
@@ -488,11 +494,11 @@ export class TransactionsService {
       .from(transactionItems)
       .where(eq(transactionItems.transactionId, transactionId));
 
-    const nonCancelledItems = items.filter((i) => i.status !== 'cancelled');
-    const cancelledItems = items.filter((i) => i.status === 'cancelled');
+    const nonCancelled = items.filter((i) => i.status !== 'cancelled');
+    const cancelled = items.filter((i) => i.status === 'cancelled');
 
     // All items cancelled → cancel the transaction
-    if (nonCancelledItems.length === 0) {
+    if (nonCancelled.length === 0) {
       await this.drizzle.db
         .update(transactions)
         .set({ status: 'cancelled', updatedAt: new Date() })
@@ -501,14 +507,12 @@ export class TransactionsService {
     }
 
     // Some items cancelled → recalculate total from non-cancelled item prices
-    if (cancelledItems.length > 0) {
-      const rawSubtotalScaled = nonCancelledItems.reduce(
+    if (cancelled.length > 0) {
+      const rawSubtotalScaled = nonCancelled.reduce(
         (sum, i) => sum + (i.price ?? 0),
         0,
       );
-
       let newTotalScaled = rawSubtotalScaled;
-
       if (txn.promoId) {
         const [promo] = await this.drizzle.db
           .select()
@@ -519,40 +523,36 @@ export class TransactionsService {
           newTotalScaled = Math.round(rawSubtotalScaled * discountFactor);
         }
       }
-
       await this.drizzle.db
         .update(transactions)
         .set({ total: newTotalScaled, updatedAt: new Date() })
         .where(eq(transactions.id, transactionId));
     }
 
-    // Multi-item status sync
-    if (items.length <= 1) return;
-
-    const allClaimed = nonCancelledItems.every((i) => i.status === 'claimed');
-    if (allClaimed && txn.status !== 'claimed') {
-      await this.drizzle.db
-        .update(transactions)
-        .set({
-          status: 'claimed',
-          claimedAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(eq(transactions.id, transactionId));
-      return;
+    // Derive overall status using priority: in_progress > pending > done > claimed
+    // Applies to both single-item and multi-item transactions
+    const statuses = new Set(nonCancelled.map((i) => i.status));
+    let derived: string;
+    if (statuses.has('in_progress')) {
+      derived = 'in_progress';
+    } else if (statuses.has('pending')) {
+      derived = 'pending';
+    } else if (statuses.has('done')) {
+      derived = 'done'; // all done, or mix of done + claimed (shoes still to pick up)
+    } else {
+      derived = 'claimed'; // all non-cancelled items claimed
     }
 
-    const someClaimed = nonCancelledItems.some((i) => i.status === 'claimed');
-    if (
-      someClaimed &&
-      txn.status !== 'in_progress' &&
-      txn.status !== 'claimed'
-    ) {
-      await this.drizzle.db
-        .update(transactions)
-        .set({ status: 'in_progress', updatedAt: new Date() })
-        .where(eq(transactions.id, transactionId));
-    }
+    if (derived === txn.status) return;
+
+    await this.drizzle.db
+      .update(transactions)
+      .set({
+        status: derived,
+        ...(derived === 'claimed' ? { claimedAt: new Date() } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(transactions.id, transactionId));
   }
 
   async updateItem(
@@ -650,6 +650,21 @@ export class TransactionsService {
     });
 
     return { ...payment, amount: fromScaled(payment.amount) };
+  }
+
+  async sendPickupReadySms(id: number): Promise<{ phone: string }> {
+    const txn = await this.findOne(id);
+
+    if (!txn.customerPhone) {
+      throw new BadRequestException('Customer has no phone number on file.');
+    }
+
+    const name = txn.customerName ?? 'Customer';
+    const message = `Hi ${name}! Your shoe(s) are ready for pickup at Sneaker Doctor. Transaction #${txn.number}. See you soon!`;
+
+    await this.sms.send({ to: txn.customerPhone, message });
+
+    return { phone: txn.customerPhone };
   }
 
   async remove(id: number, performedBy?: string) {

@@ -13,6 +13,7 @@
     "@eslint/eslintrc": "^3.3.4",
     "@hookform/resolvers": "^3.10.0",
     "@phosphor-icons/react": "^2.1.10",
+    "@react-pdf/renderer": "^4.3.2",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.45.4",
     "@tailwindcss/postcss": "^4.2.1",

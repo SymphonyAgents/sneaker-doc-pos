@@ -20,6 +20,7 @@ import {
   UsersIcon,
   AddressBookIcon,
   QrCodeIcon,
+  FileTextIcon,
 } from '@phosphor-icons/react';
 import { createBrowserClient } from '@supabase/ssr';
 import { cn } from '@/lib/utils';
@@ -79,6 +80,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Admin',
     adminOnly: true,
     items: [
+      { href: ROUTES.REPORTS, label: 'Reports', icon: FileTextIcon, adminOnly: true, superadminOnly: false },
       { href: ROUTES.AUDIT, label: 'Audit Log', icon: ClockIcon, adminOnly: true, superadminOnly: false },
       { href: ROUTES.USERS, label: 'Users', icon: UsersIcon, adminOnly: true, superadminOnly: false },
       { href: ROUTES.BRANCHES, label: 'Branches', icon: GitBranchIcon, adminOnly: false, superadminOnly: true },
