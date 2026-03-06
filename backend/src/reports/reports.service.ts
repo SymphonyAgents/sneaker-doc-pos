@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, desc, eq, gte, lte, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, lte, ne, sql } from 'drizzle-orm';
 import { DrizzleService } from '../db/drizzle.service';
 import {
   transactions,
@@ -41,12 +41,18 @@ export class ReportsService {
     const txnConditions = [
       gte(transactions.createdAt, from),
       lte(transactions.createdAt, to),
+      isNull(transactions.deletedAt),
     ];
     if (branchId) txnConditions.push(eq(transactions.branchId, branchId));
+
+    // Active-only conditions: excludes deleted + cancelled (for revenue-affecting queries)
+    const activeTxnConditions = [...txnConditions, ne(transactions.status, 'cancelled')];
 
     const paymentConditions = [
       gte(claimPayments.paidAt, from),
       lte(claimPayments.paidAt, to),
+      isNull(transactions.deletedAt),
+      ne(transactions.status, 'cancelled'),
     ];
     if (branchId) paymentConditions.push(eq(transactions.branchId, branchId));
 
@@ -86,14 +92,14 @@ export class ReportsService {
         .where(and(...txnConditions))
         .groupBy(transactions.status),
 
-      // Total non-cancelled shoes
+      // Total non-cancelled shoes (excludes cancelled transactions + cancelled items)
       this.drizzle.db
         .select({ count: sql<number>`COUNT(${transactionItems.id})` })
         .from(transactionItems)
         .innerJoin(transactions, eq(transactionItems.transactionId, transactions.id))
-        .where(and(...txnConditions, ne(transactionItems.status, 'cancelled'))),
+        .where(and(...activeTxnConditions, ne(transactionItems.status, 'cancelled'))),
 
-      // Top 5 services by booking count
+      // Top 5 services by booking count (excludes cancelled transactions)
       this.drizzle.db
         .select({
           name: servicesTable.name,
@@ -103,7 +109,7 @@ export class ReportsService {
         .from(transactionItems)
         .innerJoin(transactions, eq(transactionItems.transactionId, transactions.id))
         .innerJoin(servicesTable, eq(transactionItems.serviceId, servicesTable.id))
-        .where(and(...txnConditions))
+        .where(and(...activeTxnConditions))
         .groupBy(servicesTable.id, servicesTable.name)
         .orderBy(desc(sql`COUNT(${transactionItems.id})`))
         .limit(5),

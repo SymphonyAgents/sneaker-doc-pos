@@ -31,19 +31,27 @@ export class ExpensesService {
     return rows.map((e) => ({ ...e, amount: fromScaled(e.amount) }));
   }
 
-  async findByDate(dateKey: string) {
+  async findByDate(dateKey: string, staffId?: string) {
     const rows = await this.drizzle.db
       .select()
       .from(expenses)
-      .where(eq(expenses.dateKey, dateKey));
+      .where(
+        staffId
+          ? and(eq(expenses.dateKey, dateKey), eq(expenses.staffId, staffId))
+          : eq(expenses.dateKey, dateKey),
+      );
     return rows.map((e) => ({ ...e, amount: fromScaled(e.amount) }));
   }
 
-  async summary(dateKey: string) {
+  async summary(dateKey: string, staffId?: string) {
     const [result] = await this.drizzle.db
       .select({ total: sql<number>`COALESCE(SUM(${expenses.amount}), 0)` })
       .from(expenses)
-      .where(eq(expenses.dateKey, dateKey));
+      .where(
+        staffId
+          ? and(eq(expenses.dateKey, dateKey), eq(expenses.staffId, staffId))
+          : eq(expenses.dateKey, dateKey),
+      );
     return { dateKey, total: fromScaled(result?.total ?? 0) };
   }
 
@@ -69,6 +77,7 @@ export class ExpensesService {
         note: dto.note ?? null,
         method: dto.method,
         amount: toScaled(dto.amount),
+        staffId: performedBy ?? null,
       })
       .returning();
 

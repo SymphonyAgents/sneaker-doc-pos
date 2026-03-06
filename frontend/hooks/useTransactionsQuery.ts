@@ -13,7 +13,6 @@ export function useTransactionsQuery(params?: Record<string, string>) {
   return useQuery({
     queryKey: params ? [...TRANSACTIONS_KEY, params] : TRANSACTIONS_KEY,
     queryFn: () => api.transactions.list(params),
-    staleTime: 30 * 1000,
   });
 }
 
@@ -27,7 +26,6 @@ export function useInfiniteTransactionsQuery(params: Record<string, string> = {}
     initialPageParam: 1,
     getNextPageParam: (lastPage, allPages) =>
       lastPage.length === TRANSACTIONS_PAGE_LIMIT ? allPages.length + 1 : undefined,
-    staleTime: 30 * 1000,
   });
 }
 
@@ -45,7 +43,6 @@ export function useTransactionReportQuery(
   return useQuery({
     queryKey: ['transactions-report', year, month, options?.branchId],
     queryFn: () => api.transactions.list(params),
-    staleTime: 2 * 60 * 1000,
     enabled: options?.enabled ?? true,
   });
 }
@@ -55,7 +52,6 @@ export function useDailyStatsQuery() {
   return useQuery({
     queryKey: ['transactions-daily', today],
     queryFn: () => api.transactions.list({ limit: '100' }),
-    staleTime: 30 * 1000,
     select: (data: Transaction[]) => data.filter((t) => t.createdAt.split('T')[0] === today),
   });
 }
@@ -64,7 +60,6 @@ export function useRecentTransactionsQuery(limit = 20) {
   return useQuery({
     queryKey: ['transactions-recent', limit],
     queryFn: () => api.transactions.recent(limit),
-    staleTime: 30 * 1000,
   });
 }
 
@@ -72,8 +67,14 @@ export function useUpcomingPickupsQuery() {
   return useQuery({
     queryKey: ['transactions-upcoming'],
     queryFn: () => api.transactions.upcoming(),
-    staleTime: 5 * 60 * 1000,
     refetchInterval: 5 * 60 * 1000,
+  });
+}
+
+export function useUpcomingByMonthQuery(year: number, month: number) {
+  return useQuery({
+    queryKey: ['transactions-upcoming-month', year, month],
+    queryFn: () => api.transactions.upcomingByMonth(year, month),
   });
 }
 
@@ -84,7 +85,6 @@ export function useTransactionDetailQuery(id: string) {
     queryKey: transactionDetailKey(id),
     queryFn: () => api.transactions.get(numericId),
     enabled: !!numericId,
-    staleTime: 30 * 1000,
     initialData: () => {
       const queries = qc.getQueriesData({ queryKey: TRANSACTIONS_KEY });
       for (const [, data] of queries) {
@@ -165,7 +165,6 @@ export function useCollectionsSummaryQuery(
   return useQuery({
     queryKey: ['collections-summary', year, month, options?.branchId],
     queryFn: () => api.transactions.collectionsSummary(year, month, options?.branchId),
-    staleTime: 2 * 60 * 1000,
     enabled: options?.enabled ?? true,
   });
 }
@@ -174,19 +173,40 @@ export function useTodayCollectionsQuery() {
   return useQuery({
     queryKey: ['today-collections'],
     queryFn: () => api.transactions.todayCollections(),
-    staleTime: 30 * 1000,
     refetchInterval: 60 * 1000,
   });
 }
 
-export function useDeleteTransactionMutation() {
+export function useDeleteTransactionMutation(onSuccess?: () => void) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => api.transactions.delete(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: TRANSACTIONS_KEY });
       toast.success('Transaction deleted');
+      onSuccess?.();
     },
     onError: (err: Error) => toast.error('Failed to delete transaction', { description: err.message }),
+  });
+}
+
+export function useDeletedTransactionsQuery() {
+  return useQuery({
+    queryKey: ['transactions-deleted'],
+    queryFn: () => api.transactions.deleted(),
+  });
+}
+
+export function useRestoreTransactionMutation(onSuccess?: () => void) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.transactions.restore(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: TRANSACTIONS_KEY });
+      qc.invalidateQueries({ queryKey: ['transactions-deleted'] });
+      toast.success('Transaction restored');
+      onSuccess?.();
+    },
+    onError: (err: Error) => toast.error('Failed to restore transaction', { description: err.message }),
   });
 }

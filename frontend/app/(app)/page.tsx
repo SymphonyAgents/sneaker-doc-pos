@@ -169,8 +169,9 @@ export default function DashboardPage() {
   }, [reportTxns, from, to]);
 
   const monthlyStats = useMemo(() => {
-    const totalRevenue = filtered.reduce((sum, t) => sum + parseFloat(t.total), 0);
-    const totalPaid = filtered.reduce((sum, t) => sum + parseFloat(t.paid), 0);
+    const active = filtered.filter((t) => t.status !== 'cancelled');
+    const totalRevenue = active.reduce((sum, t) => sum + parseFloat(t.total), 0);
+    const totalPaid = active.reduce((sum, t) => sum + parseFloat(t.paid), 0);
     const byStatus = filtered.reduce(
       (acc, t) => { acc[t.status] = (acc[t.status] ?? 0) + 1; return acc; },
       {} as Record<string, number>,
@@ -188,7 +189,7 @@ export default function DashboardPage() {
   }, [filtered]);
 
   const dailyStats = useMemo(() => {
-    const txns = dailyTxns as Transaction[];
+    const txns = (dailyTxns as Transaction[]).filter((t) => t.status !== 'cancelled');
     const totalRevenue = txns.reduce((sum, t) => sum + parseFloat(t.total), 0);
     const totalPaid = txns.reduce((sum, t) => sum + parseFloat(t.paid), 0);
     return { count: txns.length, totalRevenue, totalPaid, totalBalance: totalRevenue - totalPaid };

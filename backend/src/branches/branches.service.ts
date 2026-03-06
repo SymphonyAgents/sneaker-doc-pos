@@ -44,6 +44,7 @@ export class BranchesService {
         province: dto.province ?? null,
         country: dto.country ?? null,
         phone: dto.phone ?? null,
+        createdById: performedBy ?? null,
       })
       .returning();
 

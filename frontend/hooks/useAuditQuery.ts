@@ -15,6 +15,5 @@ export function useAuditQuery(filters?: AuditFilters) {
   return useQuery({
     queryKey: [...AUDIT_KEY, filters],
     queryFn: () => api.audit.list(filters),
-    staleTime: 60 * 1000,
   });
 }

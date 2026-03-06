@@ -39,6 +39,7 @@ export class ServicesService {
         type: dto.type,
         price: toScaled(dto.price),
         isActive: dto.isActive ?? true,
+        createdById: performedBy ?? null,
       })
       .returning();
 

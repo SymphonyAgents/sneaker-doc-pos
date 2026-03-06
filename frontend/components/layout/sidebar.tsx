@@ -25,6 +25,7 @@ import {
 import { createBrowserClient } from '@supabase/ssr';
 import { cn } from '@/lib/utils';
 import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
+import { useUpcomingPickupsQuery } from '@/hooks/useTransactionsQuery';
 import { ROUTES } from '@/lib/routes';
 import { Spinner } from '@/components/ui/spinner';
 import {
@@ -96,6 +97,8 @@ export function Sidebar() {
   const [signingOut, setSigningOut] = useState(false);
   const [showQrScanner, setShowQrScanner] = useState(false);
   const { data: currentUser } = useCurrentUserQuery();
+  const { data: upcomingPickups = [] } = useUpcomingPickupsQuery();
+  const hasUpcoming = upcomingPickups.length > 0;
   const isAdmin = currentUser?.userType === 'admin' || currentUser?.userType === 'superadmin';
   const isSuperadmin = currentUser?.userType === 'superadmin';
 
@@ -137,15 +140,22 @@ export function Sidebar() {
             <div className="space-y-0.5">
               {visibleItems.map(({ href, label, icon: Icon }) => {
                 const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
+                const showDot = href === ROUTES.UPCOMING_PICKUPS && hasUpcoming;
                 const itemClass = cn(
                   'flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-colors duration-150',
                   active ? 'bg-zinc-950 text-white' : 'text-zinc-500 hover:text-zinc-950 hover:bg-zinc-100',
+                );
+                const labelNode = (
+                  <span className="flex items-center gap-1.5">
+                    {label}
+                    {showDot && <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />}
+                  </span>
                 );
                 if (active) {
                   return (
                     <span key={href} className={itemClass}>
                       <Icon size={16} weight="fill" />
-                      {label}
+                      {labelNode}
                     </span>
                   );
                 }
@@ -157,7 +167,7 @@ export function Sidebar() {
                     className={itemClass}
                   >
                     <Icon size={16} weight="regular" />
-                    {label}
+                    {labelNode}
                   </Link>
                 );
               })}

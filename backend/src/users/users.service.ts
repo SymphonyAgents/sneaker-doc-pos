@@ -2,8 +2,9 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { asc, eq, and } from 'drizzle-orm';
 import { DrizzleService } from '../db/drizzle.service';
 import { AuditService } from '../audit/audit.service';
-import { users } from '../db/schema';
+import { users, staffDocuments } from '../db/schema';
 import type { UserType } from '../db/constants';
+import type { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 
 @Injectable()
 export class UsersService {
@@ -98,6 +99,49 @@ export class UsersService {
     });
 
     return updated;
+  }
+
+  async updateProfile(id: string, dto: UpdateUserProfileDto, performedBy?: string) {
+    const user = await this.findById(id);
+    if (!user) throw new NotFoundException('User not found');
+
+    const [updated] = await this.drizzle.db
+      .update(users)
+      .set(dto)
+      .where(eq(users.id, id))
+      .returning();
+
+    await this.audit.log({
+      action: `Updated profile: ${user.email}`,
+      entityType: 'user',
+      entityId: id,
+      source: 'admin',
+      performedBy,
+    });
+
+    return updated;
+  }
+
+  async getDocuments(staffId: string) {
+    return this.drizzle.db
+      .select()
+      .from(staffDocuments)
+      .where(eq(staffDocuments.staffId, staffId))
+      .orderBy(asc(staffDocuments.uploadedAt));
+  }
+
+  async addDocument(staffId: string, url: string, label?: string) {
+    const [doc] = await this.drizzle.db
+      .insert(staffDocuments)
+      .values({ staffId, url, label: label ?? null })
+      .returning();
+    return doc;
+  }
+
+  async removeDocument(staffId: string, docId: number) {
+    await this.drizzle.db
+      .delete(staffDocuments)
+      .where(and(eq(staffDocuments.id, docId), eq(staffDocuments.staffId, staffId)));
   }
 
   async updateBranch(id: string, branchId: number, performedBy?: string) {

@@ -3,19 +3,35 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { MagnifyingGlassIcon, PlusIcon, XIcon } from '@phosphor-icons/react';
-import { STATUS_LABELS, cn } from '@/lib/utils';
+import { MagnifyingGlassIcon, PlusIcon, XIcon, TrashIcon, ArrowCounterClockwiseIcon } from '@phosphor-icons/react';
+import { STATUS_LABELS, formatDate, cn } from '@/lib/utils';
+import { toTitleCase } from '@/utils/text';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Spinner } from '@/components/ui/spinner';
 import { createTransactionColumns } from '@/columns/transactions-columns';
-import { useInfiniteTransactionsQuery, useDeleteTransactionMutation } from '@/hooks/useTransactionsQuery';
+import {
+  useInfiniteTransactionsQuery,
+  useDeleteTransactionMutation,
+  useDeletedTransactionsQuery,
+  useRestoreTransactionMutation,
+} from '@/hooks/useTransactionsQuery';
+import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import type { Transaction } from '@/lib/types';
 
 export default function TransactionsPage() {
   const router = useRouter();
   const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null);
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [restoreTarget, setRestoreTarget] = useState<Transaction | null>(null);
 
   // Draft state — what the user is typing/selecting
   const [draftSearch, setDraftSearch] = useState('');
@@ -60,9 +76,14 @@ export default function TransactionsPage() {
   if (committedFrom) params.from = committedFrom;
   if (committedTo) params.to = committedTo;
 
+  const { data: currentUser } = useCurrentUserQuery();
+  const isAdmin = currentUser?.userType === 'admin' || currentUser?.userType === 'superadmin';
+
   const query = useInfiniteTransactionsQuery(params);
   const transactions = useMemo(() => query.data?.pages.flat() ?? [], [query.data]);
   const deleteMut = useDeleteTransactionMutation();
+  const { data: deletedTxns = [], isLoading: deletedLoading } = useDeletedTransactionsQuery();
+  const restoreMut = useRestoreTransactionMutation(() => setRestoreTarget(null));
 
   const statusCounts = useMemo(() =>
     transactions.reduce(
@@ -84,14 +105,27 @@ export default function TransactionsPage() {
       <PageHeader
         title="Transactions"
         subtitle={`${transactions.length} loaded`}
-        action={
-          <Link href="/transactions/new">
-            <Button>
-              <PlusIcon size={14} weight="bold" />
-              New Transaction
-            </Button>
-          </Link>
-        }
+        action={(
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <Button variant="ghost" size="sm" onClick={() => setTrashOpen(true)}>
+                <TrashIcon size={14} />
+                Trash
+                {(deletedTxns as Transaction[]).length > 0 && (
+                  <span className="ml-1 px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 text-[10px] font-semibold">
+                    {(deletedTxns as Transaction[]).length}
+                  </span>
+                )}
+              </Button>
+            )}
+            <Link href="/transactions/new">
+              <Button>
+                <PlusIcon size={14} weight="bold" />
+                New Transaction
+              </Button>
+            </Link>
+          </div>
+        )}
       />
 
       {/* Status tabs — commit immediately on click */}
@@ -202,10 +236,55 @@ export default function TransactionsPage() {
       <ConfirmDialog
         open={!!deleteTarget}
         title="Delete transaction?"
-        description={`Delete #${deleteTarget?.number}? This cannot be undone.`}
+        description={`Delete #${deleteTarget?.number}? It will be moved to trash and can be restored by an admin.`}
         onConfirm={() => { if (deleteTarget) deleteMut.mutate(deleteTarget.id); setDeleteTarget(null); }}
         onCancel={() => setDeleteTarget(null)}
         loading={deleteMut.isPending}
+      />
+
+      <Dialog open={trashOpen} onOpenChange={setTrashOpen}>
+        <DialogContent className="bg-white sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-base">Deleted Transactions</DialogTitle>
+          </DialogHeader>
+          {deletedLoading ? (
+            <div className="flex justify-center py-8"><Spinner /></div>
+          ) : (deletedTxns as Transaction[]).length === 0 ? (
+            <p className="text-sm text-zinc-400 text-center py-8">Trash is empty.</p>
+          ) : (
+            <div className="divide-y divide-zinc-100 -mx-1 max-h-[60vh] overflow-y-auto">
+              {(deletedTxns as Transaction[]).map((txn) => (
+                <div key={txn.id} className="flex items-center gap-3 px-2 py-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs text-zinc-400">#{txn.number}</span>
+                      <span className="text-xs text-zinc-400">{formatDate(txn.deletedAt)}</span>
+                    </div>
+                    <p className="text-sm font-medium text-zinc-950 truncate">
+                      {toTitleCase(txn.customerName) || '—'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setRestoreTarget(txn)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-zinc-600 bg-zinc-100 hover:bg-zinc-200 rounded-md transition-colors shrink-0"
+                  >
+                    <ArrowCounterClockwiseIcon size={12} />
+                    Restore
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={!!restoreTarget}
+        title="Restore transaction?"
+        description={`Restore #${restoreTarget?.number} back to the active list?`}
+        onConfirm={() => { if (restoreTarget) restoreMut.mutate(restoreTarget.id); }}
+        onCancel={() => setRestoreTarget(null)}
+        loading={restoreMut.isPending}
       />
     </div>
   );

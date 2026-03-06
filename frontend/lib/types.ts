@@ -100,8 +100,15 @@ export interface Transaction {
   branchId: number | null;
   createdAt: string;
   claimedAt: string | null;
+  deletedAt: string | null;
   updatedAt: string | null;
   staffNickname?: string | null;
+  branchName?: string | null;
+  branchStreetName?: string | null;
+  branchBarangay?: string | null;
+  branchCity?: string | null;
+  branchProvince?: string | null;
+  branchPhone?: string | null;
   promo?: Promo | null;
   items?: TransactionItem[];
   payments?: ClaimPayment[];
@@ -114,6 +121,7 @@ export interface Expense {
   note: string | null;
   method: string | null;
   amount: string;
+  staffId: string | null;
   createdAt: string;
 }
 
@@ -145,9 +153,25 @@ export interface PaginatedResponse<T> {
 export interface AppUser {
   id: string;
   email: string;
+  nickname: string | null;
+  fullName: string | null;
+  contactNumber: string | null;
+  birthday: string | null;
+  address: string | null;
+  emergencyContactName: string | null;
+  emergencyContactNumber: string | null;
   userType: 'admin' | 'staff' | 'superadmin';
   branchId: number | null;
+  isActive: boolean;
   createdAt: string;
+}
+
+export interface StaffDocument {
+  id: number;
+  staffId: string;
+  url: string;
+  label: string | null;
+  uploadedAt: string;
 }
 
 export interface DepositAuditEntry {

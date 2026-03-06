@@ -12,6 +12,7 @@ interface TransactionEmailContext {
   customerEmail: string | null;
   customerPhone: string | null;
   pickupDate: string | null;
+  newPickupDate?: string | null;
   total: string;
   paid: string;
   items?: { shoeDescription: string | null; price: string | null }[];
@@ -42,7 +43,8 @@ function buildTemplate(key: EmailTemplateKey, ctx: TransactionEmailContext): Ema
   const bal = balance(ctx);
 
   switch (key) {
-    case EMAIL_TEMPLATES.pickup_ready:
+    case EMAIL_TEMPLATES.pickup_ready: {
+      const effectiveDate = ctx.newPickupDate ?? ctx.pickupDate;
       return {
         subject: `Your sneakers are ready for pickup! — Txn #${ctx.number}`,
         body: [
@@ -51,7 +53,7 @@ function buildTemplate(key: EmailTemplateKey, ctx: TransactionEmailContext): Ema
           `Great news! Your shoe(s) from Sneaker Doctor are ready for pickup.`,
           '',
           `Transaction: #${ctx.number}`,
-          `Pickup date: ${formatDate(ctx.pickupDate)}`,
+          `Pickup Date: ${formatDate(effectiveDate)}`,
           ...(bal > 0 ? [`Balance due: ${formatPeso(bal)}`] : ['Balance: Fully paid']),
           '',
           `Please bring this reference number when you come in.`,
@@ -60,6 +62,7 @@ function buildTemplate(key: EmailTemplateKey, ctx: TransactionEmailContext): Ema
           `— Sneaker Doctor`,
         ].join('\n'),
       };
+    }
 
     case EMAIL_TEMPLATES.payment_reminder:
       return {
@@ -88,7 +91,7 @@ function buildTemplate(key: EmailTemplateKey, ctx: TransactionEmailContext): Ema
           '',
           `We wanted to let you know that your pickup date for transaction #${ctx.number} has been updated.`,
           '',
-          `New pickup date: ${formatDate(ctx.pickupDate)}`,
+          `New Pickup Date: ${formatDate(ctx.newPickupDate ?? ctx.pickupDate)}`,
           '',
           `We appreciate your patience and will have your shoes ready by then.`,
           '',
@@ -128,11 +131,13 @@ function buildTemplate(key: EmailTemplateKey, ctx: TransactionEmailContext): Ema
   }
 }
 
+const SENDER_EMAIL = 'info.sneakerdoctorph@gmail.com';
+
 export function generateGmailLink(ctx: TransactionEmailContext, templateKey: EmailTemplateKey): string {
   if (!ctx.customerEmail) return '';
   const { subject, body } = buildTemplate(templateKey, ctx);
   const params = new URLSearchParams({ view: 'cm', to: ctx.customerEmail, su: subject, body });
-  return `https://mail.google.com/mail/?${params.toString()}`;
+  return `https://mail.google.com/mail/u/?authuser=${SENDER_EMAIL}&${params.toString()}`;
 }
 
 // Opens Gmail compose with only to + subject pre-filled (no body) — used when body is pasted manually
@@ -140,5 +145,5 @@ export function generateGmailLinkNoBody(ctx: TransactionEmailContext, templateKe
   if (!ctx.customerEmail) return '';
   const { subject } = buildTemplate(templateKey, ctx);
   const params = new URLSearchParams({ view: 'cm', to: ctx.customerEmail, su: subject });
-  return `https://mail.google.com/mail/?${params.toString()}`;
+  return `https://mail.google.com/mail/u/?authuser=${SENDER_EMAIL}&${params.toString()}`;
 }

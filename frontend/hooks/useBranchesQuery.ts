@@ -10,7 +10,6 @@ export function useBranchesQuery(activeOnly = false) {
   return useQuery({
     queryKey: [...BRANCHES_KEY, activeOnly],
     queryFn: () => api.branches.list(activeOnly),
-    staleTime: 5 * 60 * 1000,
   });
 }
 

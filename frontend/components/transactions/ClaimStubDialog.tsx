@@ -124,7 +124,9 @@ export function ClaimStubDialog({ open, txn, onViewTransaction }: ClaimStubDialo
         />
 
         {/* Receipt preview */}
-        <ClaimStubPreview ref={stubRef} txn={txn} />
+        <div className="flex justify-center">
+          <ClaimStubPreview ref={stubRef} txn={txn} />
+        </div>
 
         <div className="flex flex-col gap-2 mt-2">
           <div className="flex gap-2">

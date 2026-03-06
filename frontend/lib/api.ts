@@ -10,6 +10,7 @@ import type {
   ClaimPayment,
   TransactionItem,
   AppUser,
+  StaffDocument,
   Branch,
   TodayCollection,
   DepositAuditEntry,
@@ -57,6 +58,8 @@ export const api = {
     },
     recent: (limit = 10) => apiFetch<Transaction[]>(`/transactions/recent?limit=${limit}`),
     upcoming: () => apiFetch<Transaction[]>('/transactions/upcoming'),
+    upcomingByMonth: (year: number, month: number) =>
+      apiFetch<Transaction[]>(`/transactions/upcoming/monthly?year=${year}&month=${month}`),
     todayCollections: () => apiFetch<TodayCollection[]>('/transactions/today-collections'),
     collectionsSummary: (year: number, month: number, branchId?: number) => {
       const qs = new URLSearchParams({ year: String(year), month: String(month) });
@@ -81,6 +84,8 @@ export const api = {
       }),
     sendPickupReadySms: (id: number) =>
       apiFetch<{ phone: string }>(`/transactions/${id}/sms/pickup-ready`, { method: 'POST' }),
+    deleted: () => apiFetch<Transaction[]>('/transactions/deleted'),
+    restore: (id: number) => apiFetch<void>(`/transactions/${id}/restore`, { method: 'PATCH' }),
     delete: (id: number) => apiFetch<void>(`/transactions/${id}`, { method: 'DELETE' }),
   },
 
@@ -151,7 +156,21 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify({ branchId }),
       }),
+    get: (id: string) => apiFetch<AppUser>(`/users/${id}`),
+    updateProfile: (id: string, body: Partial<AppUser>) =>
+      apiFetch<AppUser>(`/users/${id}/profile`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
     delete: (id: string) => apiFetch<void>(`/users/${id}`, { method: 'DELETE' }),
+    getDocuments: (id: string) => apiFetch<StaffDocument[]>(`/users/${id}/documents`),
+    addDocument: (id: string, body: { url: string; label?: string }) =>
+      apiFetch<StaffDocument>(`/users/${id}/documents`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    deleteDocument: (userId: string, docId: number) =>
+      apiFetch<void>(`/users/${userId}/documents/${docId}`, { method: 'DELETE' }),
   },
 
   deposits: {

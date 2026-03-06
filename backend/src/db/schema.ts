@@ -27,6 +27,7 @@ export const branches = pgTable('branches', {
   country: varchar('country', { length: 100 }),
   phone: varchar('phone', { length: 50 }),
   isActive: boolean('is_active').default(true).notNull(),
+  createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true })
     .defaultNow()
     .notNull(),
@@ -41,6 +42,7 @@ export const services = pgTable('services', {
   type: varchar('type', { length: 50 }).notNull(), // 'primary' | 'add_on'
   price: bigint('price', { mode: 'number' }).notNull(),
   isActive: boolean('is_active').default(true).notNull(),
+  createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true })
     .defaultNow()
     .notNull(),
@@ -58,6 +60,7 @@ export const promos = pgTable('promos', {
   dateFrom: date('date_from'),
   dateTo: date('date_to'),
   isActive: boolean('is_active').default(true).notNull(),
+  createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true })
     .defaultNow()
     .notNull(),

@@ -3,14 +3,15 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
+import type { AppUser } from '@/lib/types';
 
 const USERS_KEY = ['users'];
+const docsKey = (id: string) => ['users', id, 'documents'];
 
 export function useUsersQuery() {
   return useQuery({
     queryKey: USERS_KEY,
     queryFn: () => api.users.list(),
-    staleTime: 60 * 1000,
   });
 }
 
@@ -48,5 +49,51 @@ export function useDeleteUserMutation(onSuccess?: () => void) {
       onSuccess?.();
     },
     onError: (err: Error) => toast.error('Failed to remove user', { description: err.message }),
+  });
+}
+
+export function useUpdateUserProfileMutation(onSuccess?: () => void) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<AppUser> }) =>
+      api.users.updateProfile(id, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: USERS_KEY });
+      toast.success('Profile updated');
+      onSuccess?.();
+    },
+    onError: (err: Error) => toast.error('Failed to update profile', { description: err.message }),
+  });
+}
+
+export function useStaffDocumentsQuery(userId: string) {
+  return useQuery({
+    queryKey: docsKey(userId),
+    queryFn: () => api.users.getDocuments(userId),
+    enabled: !!userId,
+  });
+}
+
+export function useAddDocumentMutation(userId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { url: string; label?: string }) =>
+      api.users.addDocument(userId, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: docsKey(userId) });
+    },
+    onError: (err: Error) => toast.error('Failed to save document', { description: err.message }),
+  });
+}
+
+export function useDeleteDocumentMutation(userId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (docId: number) => api.users.deleteDocument(userId, docId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: docsKey(userId) });
+      toast.success('Document removed');
+    },
+    onError: (err: Error) => toast.error('Failed to remove document', { description: err.message }),
   });
 }

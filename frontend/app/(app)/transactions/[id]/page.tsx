@@ -1,8 +1,9 @@
 'use client';
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
-import { ArrowLeftIcon, PlusIcon, EnvelopeIcon, PaperPlaneTiltIcon } from '@phosphor-icons/react';
+import { ArrowLeftIcon, PlusIcon, EnvelopeIcon, PaperPlaneTiltIcon, TrashIcon } from '@phosphor-icons/react';
 import { Lightbox } from '@/components/ui/lightbox';
 import Link from 'next/link';
 import { formatPeso, formatDate, formatDatetime, formatAddress, PAYMENT_METHOD_LABELS, cn } from '@/lib/utils';
@@ -32,7 +33,9 @@ import {
   useUpdateTransactionMutation,
   useUpdateItemStatusMutation,
   useAddPaymentMutation,
+  useDeleteTransactionMutation,
 } from '@/hooks/useTransactionsQuery';
+import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
 import { useUploadPhotoMutation } from '@/hooks/useUploadPhoto';
 import { PAYMENT_METHOD_VALUES, TRANSACTION_STATUS } from '@/lib/constants';
 import { toPng } from 'html-to-image';
@@ -43,9 +46,11 @@ import { ClaimStubPreview } from '@/components/transactions/ClaimStubPreview';
 import type { EmailTemplateKey } from '@/utils/email';
 import type { PaymentMethod } from '@/lib/types';
 import { ItemStatusConfirmDialog, type PendingItemChange } from '@/components/transactions/ItemStatusConfirmDialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 export default function TransactionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const router = useRouter();
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [paymentAmount, setPaymentAmount] = useState('');
@@ -60,6 +65,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const pendingUploadRef = useRef<{ itemId: number; type: 'before' | 'after' } | null>(null);
   const stubRef = useRef<HTMLDivElement>(null);
 
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [smsDialogOpen, setSmsDialogOpen] = useState(false);
   const [smsSending, setSmsSending] = useState(false);
 
@@ -67,8 +73,12 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const [noteValue, setNoteValue] = useState('');
   const initializedRef = useRef<string | null>(null);
 
+  const { data: currentUser } = useCurrentUserQuery();
+  const isAdmin = currentUser?.userType === 'admin' || currentUser?.userType === 'superadmin';
+
   const { data: txn, isLoading, isFetching } = useTransactionDetailQuery(id);
   const updateTxnMut = useUpdateTransactionMutation(id);
+  const deleteTxnMut = useDeleteTransactionMutation(() => router.replace('/transactions'));
   const updateItemStatusMut = useUpdateItemStatusMutation(id);
   const uploadPhotoMut = useUploadPhotoMutation(id);
 
@@ -213,6 +223,12 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
             </Button>
           </Link>
         }
+        action={isAdmin ? (
+          <Button variant="danger" size="sm" onClick={() => setDeleteConfirmOpen(true)}>
+            <TrashIcon size={14} />
+            Delete
+          </Button>
+        ) : undefined}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -691,6 +707,15 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
           updateItemStatusMut.mutate({ itemId: pendingItemChange.itemId, status: pendingItemChange.newStatus });
         }}
         onCancel={() => setPendingItemChange(null)}
+      />
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="Delete transaction?"
+        description={`Delete #${txn.number}? It will be moved to trash and can be restored from the Transactions page.`}
+        onConfirm={() => { setDeleteConfirmOpen(false); deleteTxnMut.mutate(txn.id); }}
+        onCancel={() => setDeleteConfirmOpen(false)}
+        loading={deleteTxnMut.isPending}
       />
     </div>
   );

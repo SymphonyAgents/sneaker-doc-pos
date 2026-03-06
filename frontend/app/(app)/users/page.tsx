@@ -12,6 +12,8 @@ import { useBranchesQuery } from '@/hooks/useBranchesQuery';
 import { toTitleCase } from '@/utils/text';
 import { UserRoleConfirmDialog, type PendingRoleChange } from '@/components/users/UserRoleConfirmDialog';
 import { UserBranchConfirmDialog, type PendingBranchChange } from '@/components/users/UserBranchConfirmDialog';
+import { EditStaffDialog } from '@/components/users/EditStaffDialog';
+import { StaffDocumentsDialog } from '@/components/users/StaffDocumentsDialog';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import type { AppUser, Branch } from '@/lib/types';
 
@@ -28,6 +30,8 @@ export default function UsersPage() {
   const [pendingRoleChange, setPendingRoleChange] = useState<PendingRoleChange | null>(null);
   const [pendingBranchChange, setPendingBranchChange] = useState<PendingBranchChange | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null);
+  const [editTarget, setEditTarget] = useState<AppUser | null>(null);
+  const [docsTarget, setDocsTarget] = useState<AppUser | null>(null);
 
   const isSuperadmin = currentUser?.userType === 'superadmin';
 
@@ -42,6 +46,8 @@ export default function UsersPage() {
           }
         : undefined,
       onDelete: isSuperadmin ? setDeleteTarget : undefined,
+      onEdit: setEditTarget,
+      onDocuments: setDocsTarget,
       currentUserId: currentUser?.id,
       isSuperadmin,
       branches: branches as Branch[],
@@ -114,7 +120,9 @@ export default function UsersPage() {
         }}
         onCancel={() => setPendingRoleChange(null)}
       />
-      <UserBranchConfirmDialog
+        <EditStaffDialog user={editTarget} onClose={() => setEditTarget(null)} />
+      <StaffDocumentsDialog user={docsTarget} onClose={() => setDocsTarget(null)} />
+    <UserBranchConfirmDialog
         open={pendingBranchChange !== null}
         pendingChange={pendingBranchChange}
         loading={updateBranchMut.isPending}

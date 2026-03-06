@@ -11,9 +11,12 @@ import {
   lte,
   and,
   not,
+  ne,
   inArray,
   ilike,
   or,
+  isNotNull,
+  isNull,
 } from 'drizzle-orm';
 import { DrizzleService } from '../db/drizzle.service';
 import {
@@ -23,6 +26,7 @@ import {
   customers,
   promos,
   services,
+  branches,
   users as usersTable, // alias to avoid conflict with this.users (UsersService)
 } from '../db/schema';
 import {
@@ -80,6 +84,9 @@ export class TransactionsService {
 
     const conditions: ReturnType<typeof eq>[] = [];
 
+    // Always exclude soft-deleted transactions
+    conditions.push(isNull(transactions.deletedAt) as ReturnType<typeof eq>);
+
     if (status) conditions.push(eq(transactions.status, status));
     if (branchId) conditions.push(eq(transactions.branchId, branchId));
     if (from)
@@ -111,10 +118,11 @@ export class TransactionsService {
 
   async findOne(id: number) {
     const [row] = await this.drizzle.db
-      .select({ txn: transactions, promo: promos, staff: usersTable })
+      .select({ txn: transactions, promo: promos, staff: usersTable, branch: branches })
       .from(transactions)
       .leftJoin(promos, eq(transactions.promoId, promos.id))
       .leftJoin(usersTable, eq(transactions.staffId, usersTable.id))
+      .leftJoin(branches, eq(transactions.branchId, branches.id))
       .where(eq(transactions.id, id));
     if (!row) throw new NotFoundException(`Transaction ${id} not found`);
 
@@ -188,6 +196,12 @@ export class TransactionsService {
       customerCity: customerAddress?.city ?? null,
       customerProvince: customerAddress?.province ?? null,
       staffNickname: row.staff?.nickname ?? null,
+      branchName: row.branch?.name ?? null,
+      branchStreetName: row.branch?.streetName ?? null,
+      branchBarangay: row.branch?.barangay ?? null,
+      branchCity: row.branch?.city ?? null,
+      branchProvince: row.branch?.province ?? null,
+      branchPhone: row.branch?.phone ?? null,
     };
   }
 
@@ -195,7 +209,7 @@ export class TransactionsService {
     const [txn] = await this.drizzle.db
       .select()
       .from(transactions)
-      .where(eq(transactions.number, number));
+      .where(and(eq(transactions.number, number), isNull(transactions.deletedAt)));
     if (!txn) throw new NotFoundException(`Transaction ${number} not found`);
     return this.findOne(txn.id);
   }
@@ -398,6 +412,7 @@ export class TransactionsService {
     const rows = await this.drizzle.db
       .select()
       .from(transactions)
+      .where(isNull(transactions.deletedAt))
       .orderBy(desc(transactions.createdAt))
       .limit(limit);
     return rows.map(mapTxn);
@@ -413,12 +428,49 @@ export class TransactionsService {
       .from(transactions)
       .where(
         and(
-          gte(transactions.pickupDate, today),
-          lte(transactions.pickupDate, plus3),
-          not(inArray(transactions.status, ['claimed', 'cancelled'])),
+          isNull(transactions.deletedAt),
+          not(inArray(transactions.status, ['done', 'claimed', 'cancelled'])),
+          or(
+            // original pickup date within 3 days
+            and(
+              gte(transactions.pickupDate, today),
+              lte(transactions.pickupDate, plus3),
+            ),
+            // OR rescheduled date within 3 days
+            and(
+              isNotNull(transactions.newPickupDate),
+              gte(transactions.newPickupDate, today),
+              lte(transactions.newPickupDate, plus3),
+            ),
+          ),
         ),
       )
-      .orderBy(transactions.pickupDate);
+      .orderBy(sql`COALESCE(${transactions.newPickupDate}, ${transactions.pickupDate}) ASC`);
+    return rows.map(mapTxn);
+  }
+
+  async findUpcomingByMonth(year: number, month: number) {
+    const from = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const to = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    const rows = await this.drizzle.db
+      .select()
+      .from(transactions)
+      .where(
+        and(
+          isNull(transactions.deletedAt),
+          not(inArray(transactions.status, ['claimed', 'cancelled'])),
+          or(
+            and(gte(transactions.pickupDate, from), lte(transactions.pickupDate, to)),
+            and(
+              isNotNull(transactions.newPickupDate),
+              gte(transactions.newPickupDate, from),
+              lte(transactions.newPickupDate, to),
+            ),
+          ),
+        ),
+      )
+      .orderBy(sql`COALESCE(${transactions.newPickupDate}, ${transactions.pickupDate}) ASC`);
     return rows.map(mapTxn);
   }
 
@@ -437,6 +489,8 @@ export class TransactionsService {
     const conditions: ReturnType<typeof eq>[] = [
       gte(claimPayments.paidAt, from),
       lte(claimPayments.paidAt, to),
+      isNull(transactions.deletedAt) as ReturnType<typeof eq>,
+      ne(transactions.status, 'cancelled') as ReturnType<typeof eq>,
     ];
     if (branchId) conditions.push(eq(transactions.branchId, branchId));
 
@@ -476,7 +530,13 @@ export class TransactionsService {
       })
       .from(claimPayments)
       .innerJoin(transactions, eq(claimPayments.transactionId, transactions.id))
-      .where(sql`${claimPayments.paidAt}::date = ${today}::date`)
+      .where(
+        and(
+          sql`${claimPayments.paidAt}::date = ${today}::date` as ReturnType<typeof eq>,
+          isNull(transactions.deletedAt) as ReturnType<typeof eq>,
+          ne(transactions.status, 'cancelled') as ReturnType<typeof eq>,
+        ),
+      )
       .orderBy(desc(claimPayments.paidAt));
     return rows.map((r) => ({ ...r, amount: fromScaled(r.amount) }));
   }
@@ -660,7 +720,16 @@ export class TransactionsService {
     }
 
     const name = txn.customerName ?? 'Customer';
-    const message = `Hi ${name}! Your shoe(s) are ready for pickup at Sneaker Doctor. Transaction #${txn.number}. See you soon!`;
+    const pickupDate = txn.newPickupDate ?? txn.pickupDate;
+    const dateStr = pickupDate
+      ? new Date(pickupDate).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
+      : null;
+    const message = [
+      `Hi ${name}! Your shoe(s) are ready for pickup at Sneaker Doctor.`,
+      `Transaction #${txn.number}.`,
+      ...(dateStr ? [`Pickup Date: ${dateStr}.`] : []),
+      `See you soon!`,
+    ].join(' ');
 
     await this.sms.send({ to: txn.customerPhone, message });
 
@@ -670,7 +739,10 @@ export class TransactionsService {
   async remove(id: number, performedBy?: string) {
     const txn = await this.findOne(id);
 
-    await this.drizzle.db.delete(transactions).where(eq(transactions.id, id));
+    await this.drizzle.db
+      .update(transactions)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(eq(transactions.id, id));
 
     const branchId = performedBy
       ? await this.users.getBranchId(performedBy)
@@ -684,6 +756,43 @@ export class TransactionsService {
       source: 'admin',
       performedBy,
       branchId: branchId ?? undefined,
+    });
+  }
+
+  async findDeleted() {
+    const rows = await this.drizzle.db
+      .select()
+      .from(transactions)
+      .where(isNotNull(transactions.deletedAt))
+      .orderBy(desc(transactions.deletedAt));
+    return rows.map(mapTxn);
+  }
+
+  async restore(id: number, performedBy?: string) {
+    const [txn] = await this.drizzle.db
+      .select()
+      .from(transactions)
+      .where(and(eq(transactions.id, id), isNotNull(transactions.deletedAt)));
+    if (!txn) throw new NotFoundException(`Deleted transaction ${id} not found`);
+
+    await this.drizzle.db
+      .update(transactions)
+      .set({ deletedAt: null, updatedAt: new Date() })
+      .where(eq(transactions.id, id));
+
+    const branchId = performedBy
+      ? await this.users.getBranchId(performedBy)
+      : null;
+
+    await this.audit.log({
+      action: 'update',
+      auditType: AUDIT_TYPE.TRANSACTION_UPDATED,
+      entityType: 'transaction',
+      entityId: txn.number,
+      source: 'admin',
+      performedBy,
+      branchId: branchId ?? undefined,
+      details: { restored: true },
     });
   }
 }

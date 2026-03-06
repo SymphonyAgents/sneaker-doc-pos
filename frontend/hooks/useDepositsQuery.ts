@@ -7,7 +7,6 @@ export function useDepositsQuery(year: number, month: number, branchId?: number)
   return useQuery({
     queryKey: ['deposits', year, month, branchId],
     queryFn: () => api.deposits.get(year, month, branchId),
-    staleTime: 60 * 1000,
   });
 }
 
@@ -15,7 +14,6 @@ export function useDepositsAuditQuery(year: number, month: number, branchId?: nu
   return useQuery({
     queryKey: ['deposits-audit', year, month, branchId, method],
     queryFn: () => api.deposits.getAudit(year, month, branchId, method),
-    staleTime: 30 * 1000,
   });
 }
 
