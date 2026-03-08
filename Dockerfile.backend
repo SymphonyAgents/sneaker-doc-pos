@@ -1,0 +1,29 @@
+FROM node:20-alpine AS base
+RUN npm install -g pnpm
+
+FROM base AS deps
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY backend/package.json ./backend/
+RUN pnpm install --frozen-lockfile --filter=backend
+
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/backend/node_modules ./backend/node_modules
+COPY backend ./backend
+WORKDIR /app/backend
+RUN pnpm build
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+COPY --from=builder /app/backend/dist ./dist
+COPY --from=builder /app/backend/node_modules ./node_modules
+COPY backend/package.json ./
+
+EXPOSE 8080
+
+CMD ["node", "dist/main"]

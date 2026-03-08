@@ -10,8 +10,11 @@ import {
   Query,
   UseGuards,
   Req,
+  NotFoundException,
 } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../auth/auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
 import type { AuthedRequest } from '../auth/auth.types';
 import { TransactionsService } from './transactions.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
@@ -60,6 +63,15 @@ export class TransactionsController {
   }
 
   @UseGuards(SupabaseAuthGuard)
+  @Get('upcoming/monthly')
+  findUpcomingByMonth(@Query('year') year: string, @Query('month') month: string) {
+    return this.transactionsService.findUpcomingByMonth(
+      parseInt(year, 10),
+      parseInt(month, 10),
+    );
+  }
+
+  @UseGuards(SupabaseAuthGuard)
   @Get('today-collections')
   todayCollections() {
     return this.transactionsService.todayCollections();
@@ -85,10 +97,19 @@ export class TransactionsController {
     return this.transactionsService.findByNumber(number);
   }
 
+  @UseGuards(SupabaseAuthGuard, RolesGuard)
+  @Roles('admin', 'superadmin')
+  @Get('deleted')
+  findDeleted() {
+    return this.transactionsService.findDeleted();
+  }
+
   @UseGuards(SupabaseAuthGuard)
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.transactionsService.findOne(id);
+  async findOne(@Param('id', ParseIntPipe) id: number) {
+    const txn = await this.transactionsService.findOne(id);
+    if (txn.deletedAt) throw new NotFoundException(`Transaction ${id} not found`);
+    return txn;
   }
 
   @UseGuards(SupabaseAuthGuard)
@@ -129,6 +150,20 @@ export class TransactionsController {
   }
 
   @UseGuards(SupabaseAuthGuard)
+  @Post(':id/sms/pickup-ready')
+  sendPickupReadySms(@Param('id', ParseIntPipe) id: number) {
+    return this.transactionsService.sendPickupReadySms(id);
+  }
+
+  @UseGuards(SupabaseAuthGuard, RolesGuard)
+  @Roles('admin', 'superadmin')
+  @Patch(':id/restore')
+  restore(@Param('id', ParseIntPipe) id: number, @Req() req: AuthedRequest) {
+    return this.transactionsService.restore(id, req.user?.id);
+  }
+
+  @UseGuards(SupabaseAuthGuard, RolesGuard)
+  @Roles('admin', 'superadmin')
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number, @Req() req: AuthedRequest) {
     return this.transactionsService.remove(id, req.user?.id);

@@ -3,7 +3,11 @@ import { ItemStatus, PaymentMethod, ServiceType, TransactionStatus } from './con
 export interface Branch {
   id: number;
   name: string;
-  address: string | null;
+  streetName: string | null;
+  barangay: string | null;
+  city: string | null;
+  province: string | null;
+  country: string | null;
   phone: string | null;
   isActive: boolean;
   createdAt: string;
@@ -22,8 +26,14 @@ export interface Customer {
   phone: string;
   name: string | null;
   email: string | null;
+  streetName: string | null;
+  barangay: string | null;
+  city: string | null;
+  province: string | null;
+  country: string | null;
   createdAt: string;
   updatedAt: string | null;
+  shoesCount?: number;
 }
 
 export interface Service {
@@ -66,6 +76,7 @@ export interface ClaimPayment {
   transactionId: number;
   method: PaymentMethod;
   amount: string;
+  referenceNumber: string | null;
   paidAt: string;
 }
 
@@ -75,6 +86,10 @@ export interface Transaction {
   customerName: string | null;
   customerPhone: string | null;
   customerEmail: string | null;
+  customerStreetName: string | null;
+  customerBarangay: string | null;
+  customerCity: string | null;
+  customerProvince: string | null;
   status: TransactionStatus;
   note: string | null;
   pickupDate: string | null;
@@ -85,7 +100,15 @@ export interface Transaction {
   branchId: number | null;
   createdAt: string;
   claimedAt: string | null;
+  deletedAt: string | null;
   updatedAt: string | null;
+  staffNickname?: string | null;
+  branchName?: string | null;
+  branchStreetName?: string | null;
+  branchBarangay?: string | null;
+  branchCity?: string | null;
+  branchProvince?: string | null;
+  branchPhone?: string | null;
   promo?: Promo | null;
   items?: TransactionItem[];
   payments?: ClaimPayment[];
@@ -98,6 +121,7 @@ export interface Expense {
   note: string | null;
   method: string | null;
   amount: string;
+  staffId: string | null;
   createdAt: string;
 }
 
@@ -129,9 +153,40 @@ export interface PaginatedResponse<T> {
 export interface AppUser {
   id: string;
   email: string;
+  nickname: string | null;
+  fullName: string | null;
+  contactNumber: string | null;
+  birthday: string | null;
+  address: string | null;
+  emergencyContactName: string | null;
+  emergencyContactNumber: string | null;
   userType: 'admin' | 'staff' | 'superadmin';
   branchId: number | null;
+  isActive: boolean;
   createdAt: string;
+}
+
+export interface StaffDocument {
+  id: number;
+  staffId: string;
+  url: string;
+  label: string | null;
+  uploadedAt: string;
+}
+
+export interface DepositAuditEntry {
+  id: number;
+  createdAt: string;
+  performedBy: string | null;
+  performedByEmail: string | null;
+  branchId: number | null;
+  details: {
+    year: number;
+    month: number;
+    method: string;
+    added: string;
+    total: string;
+  } | null;
 }
 
 export interface TodayCollection {
@@ -142,4 +197,43 @@ export interface TodayCollection {
   paidAt: string;
   txnNumber: string;
   customerName: string | null;
+}
+
+export interface ReportSummary {
+  collections: {
+    cash: string;
+    gcash: string;
+    card: string;
+    bank_deposit: string;
+    total: string;
+  };
+  expenses: {
+    total: string;
+    items: Expense[];
+  };
+  transactions: {
+    total: number;
+    claimed: number;
+    cancelled: number;
+    pending: number;
+    in_progress: number;
+    done: number;
+  };
+  shoesCount: number;
+  net: string;
+  topServices: {
+    name: string;
+    count: number;
+    revenue: string;
+  }[];
+  txnList: {
+    id: number;
+    number: string;
+    customerName: string | null;
+    createdAt: string;
+    status: TransactionStatus;
+    total: string;
+    paid: string;
+    itemCount: number;
+  }[];
 }

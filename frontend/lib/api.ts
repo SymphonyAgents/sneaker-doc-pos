@@ -10,8 +10,11 @@ import type {
   ClaimPayment,
   TransactionItem,
   AppUser,
+  StaffDocument,
   Branch,
   TodayCollection,
+  DepositAuditEntry,
+  ReportSummary,
 } from './types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
@@ -55,6 +58,8 @@ export const api = {
     },
     recent: (limit = 10) => apiFetch<Transaction[]>(`/transactions/recent?limit=${limit}`),
     upcoming: () => apiFetch<Transaction[]>('/transactions/upcoming'),
+    upcomingByMonth: (year: number, month: number) =>
+      apiFetch<Transaction[]>(`/transactions/upcoming/monthly?year=${year}&month=${month}`),
     todayCollections: () => apiFetch<TodayCollection[]>('/transactions/today-collections'),
     collectionsSummary: (year: number, month: number, branchId?: number) => {
       const qs = new URLSearchParams({ year: String(year), month: String(month) });
@@ -63,7 +68,7 @@ export const api = {
     },
     get: (id: number) => apiFetch<Transaction>(`/transactions/${id}`),
     getByNumber: (number: string) => apiFetch<Transaction>(`/transactions/number/${number}`),
-    create: (body: Partial<Omit<Transaction, 'items'>> & { items?: Record<string, unknown>[]; isExistingCustomer?: boolean }) =>
+    create: (body: Partial<Omit<Transaction, 'items'>> & { items?: Record<string, unknown>[]; isExistingCustomer?: boolean; customerStreetName?: string; customerBarangay?: string; customerCity?: string; customerProvince?: string; customerCountry?: string }) =>
       apiFetch<Transaction>('/transactions', { method: 'POST', body: JSON.stringify(body) }),
     update: (id: number, body: Partial<Transaction>) =>
       apiFetch<Transaction>(`/transactions/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
@@ -72,11 +77,15 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify(body),
       }),
-    addPayment: (id: number, body: { method: string; amount: string }) =>
+    addPayment: (id: number, body: { method: string; amount: string; referenceNumber?: string }) =>
       apiFetch<ClaimPayment>(`/transactions/${id}/payments`, {
         method: 'POST',
         body: JSON.stringify(body),
       }),
+    sendPickupReadySms: (id: number) =>
+      apiFetch<{ phone: string }>(`/transactions/${id}/sms/pickup-ready`, { method: 'POST' }),
+    deleted: () => apiFetch<Transaction[]>('/transactions/deleted'),
+    restore: (id: number) => apiFetch<void>(`/transactions/${id}/restore`, { method: 'PATCH' }),
     delete: (id: number) => apiFetch<void>(`/transactions/${id}`, { method: 'DELETE' }),
   },
 
@@ -115,7 +124,13 @@ export const api = {
   },
 
   audit: {
-    list: () => apiFetch<AuditEntry[]>('/audit'),
+    list: (params?: { month?: number; year?: number; performedBy?: string }) => {
+      const qs = new URLSearchParams();
+      if (params?.month) qs.set('month', String(params.month));
+      if (params?.year) qs.set('year', String(params.year));
+      if (params?.performedBy) qs.set('performedBy', params.performedBy);
+      return apiFetch<AuditEntry[]>(`/audit?${qs}`);
+    },
   },
 
   customers: {
@@ -141,14 +156,45 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify({ branchId }),
       }),
+    get: (id: string) => apiFetch<AppUser>(`/users/${id}`),
+    updateProfile: (id: string, body: Partial<AppUser>) =>
+      apiFetch<AppUser>(`/users/${id}/profile`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
+    delete: (id: string) => apiFetch<void>(`/users/${id}`, { method: 'DELETE' }),
+    getDocuments: (id: string) => apiFetch<StaffDocument[]>(`/users/${id}/documents`),
+    addDocument: (id: string, body: { url: string; label?: string }) =>
+      apiFetch<StaffDocument>(`/users/${id}/documents`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    deleteDocument: (userId: string, docId: number) =>
+      apiFetch<void>(`/users/${userId}/documents/${docId}`, { method: 'DELETE' }),
+  },
+
+  deposits: {
+    get: (year: number, month: number, branchId?: number) => {
+      const qs = new URLSearchParams({ year: String(year), month: String(month) });
+      if (branchId) qs.set('branchId', String(branchId));
+      return apiFetch<Record<string, string>>(`/deposits?${qs}`);
+    },
+    upsert: (body: { year: number; month: number; method: string; amount: string; branchId?: number }) =>
+      apiFetch<{ id: number; amount: string }>('/deposits', { method: 'PATCH', body: JSON.stringify(body) }),
+    getAudit: (year: number, month: number, branchId?: number, method?: string) => {
+      const qs = new URLSearchParams({ year: String(year), month: String(month) });
+      if (branchId) qs.set('branchId', String(branchId));
+      if (method) qs.set('method', method);
+      return apiFetch<DepositAuditEntry[]>(`/deposits/audit?${qs}`);
+    },
   },
 
   branches: {
     list: (activeOnly?: boolean) =>
       apiFetch<Branch[]>(`/branches${activeOnly ? '?active=1' : ''}`),
-    create: (body: { name: string; address?: string; phone?: string }) =>
+    create: (body: { name: string; streetName?: string; barangay?: string; city?: string; province?: string; country?: string; phone?: string }) =>
       apiFetch<Branch>('/branches', { method: 'POST', body: JSON.stringify(body) }),
-    update: (id: number, body: Partial<{ name: string; address: string | null; phone: string | null; isActive: boolean }>) =>
+    update: (id: number, body: Partial<{ name: string; streetName: string | null; barangay: string | null; city: string | null; province: string | null; country: string | null; phone: string | null; isActive: boolean }>) =>
       apiFetch<Branch>(`/branches/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   },
 
@@ -158,5 +204,13 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(body),
       }),
+  },
+
+  reports: {
+    summary: (year: number, month: number, branchId?: number) => {
+      const qs = new URLSearchParams({ year: String(year), month: String(month) });
+      if (branchId) qs.set('branchId', String(branchId));
+      return apiFetch<ReportSummary>(`/reports/summary?${qs}`);
+    },
   },
 };

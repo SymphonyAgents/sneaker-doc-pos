@@ -1,7 +1,9 @@
 'use client';
 
 import { type ColumnDef } from '@tanstack/react-table';
+import { TrashIcon, PencilSimpleIcon, FolderOpenIcon } from '@phosphor-icons/react';
 import { formatDatetime, cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -33,6 +35,9 @@ function RoleBadge({ role }: { role: string }) {
 interface UserColumnsOptions {
   onRoleChange: (id: string, newUserType: string, currentUserType: string, email: string) => void;
   onBranchChange?: (id: string, newBranchId: number, currentBranchId: number | null, email: string, newBranchName: string, currentBranchName: string | null) => void;
+  onDelete?: (user: AppUser) => void;
+  onEdit?: (user: AppUser) => void;
+  onDocuments?: (user: AppUser) => void;
   currentUserId?: string;
   isSuperadmin?: boolean;
   branches?: Branch[];
@@ -41,6 +46,9 @@ interface UserColumnsOptions {
 export const createUserColumns = ({
   onRoleChange,
   onBranchChange,
+  onDelete,
+  onEdit,
+  onDocuments,
   currentUserId,
   isSuperadmin,
   branches = [],
@@ -133,5 +141,47 @@ export const createUserColumns = ({
     cell: ({ row }) => (
       <span className="text-xs text-zinc-400">{formatDatetime(row.original.createdAt)}</span>
     ),
+  },
+  {
+    id: 'actions',
+    header: '',
+    size: 200,
+    cell: ({ row }) => {
+      const user = row.original;
+      const isSelf = user.id === currentUserId;
+      return (
+        <div className="flex items-center justify-end gap-2">
+          {onEdit && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={(e) => { e.stopPropagation(); onEdit(user); }}
+            >
+              <PencilSimpleIcon size={13} />
+              Edit
+            </Button>
+          )}
+          {onDocuments && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={(e) => { e.stopPropagation(); onDocuments(user); }}
+            >
+              <FolderOpenIcon size={13} />
+              Docs
+            </Button>
+          )}
+          {!isSelf && isSuperadmin && onDelete && (
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={(e) => { e.stopPropagation(); onDelete(user); }}
+            >
+              <TrashIcon size={13} />
+            </Button>
+          )}
+        </div>
+      );
+    },
   },
 ];

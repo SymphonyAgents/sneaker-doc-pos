@@ -11,7 +11,7 @@ interface TransactionConfirmDialogProps {
   open: boolean;
   data: TransactionFormData | null;
   services: Service[];
-  pendingPhotos: Map<number, PendingPhoto>;
+  pendingPhotos: PendingPhoto[];
   selectedPromo: Promo | undefined;
   total: number;
   rawTotal: number;
@@ -102,7 +102,7 @@ export function TransactionConfirmDialog({
                 const addons = (item.addonServiceIds ?? [])
                   .map((id) => services.find((s) => s.id === parseInt(id, 10)))
                   .filter(Boolean) as Service[];
-                const photo = pendingPhotos.get(idx);
+                const photo = pendingPhotos[idx];
                 return (
                   <div key={idx} className="bg-zinc-50 rounded-md p-2.5 flex gap-2.5">
                     {photo && (
@@ -137,11 +137,11 @@ export function TransactionConfirmDialog({
           </div>
 
           {/* Photos note */}
-          {pendingPhotos.size > 0 && (
+          {pendingPhotos.length > 0 && (
             <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-md px-3 py-2">
               <CameraIcon size={14} className="text-blue-500 shrink-0" />
               <p className="text-xs text-blue-600">
-                {pendingPhotos.size} before photo{pendingPhotos.size > 1 ? 's' : ''} will be uploaded after creation
+                {pendingPhotos.length} before photo{pendingPhotos.length > 1 ? 's' : ''} will be uploaded after creation
               </p>
             </div>
           )}

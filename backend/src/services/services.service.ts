@@ -39,6 +39,7 @@ export class ServicesService {
         type: dto.type,
         price: toScaled(dto.price),
         isActive: dto.isActive ?? true,
+        createdById: performedBy ?? null,
       })
       .returning();
 
@@ -86,9 +87,12 @@ export class ServicesService {
   }
 
   async remove(id: number, performedBy?: string) {
-    await this.findOne(id);
+    const existing = await this.findOne(id);
 
-    await this.drizzle.db.delete(services).where(eq(services.id, id));
+    await this.drizzle.db
+      .update(services)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(eq(services.id, id));
 
     await this.audit.log({
       action: 'delete',
@@ -96,6 +100,7 @@ export class ServicesService {
       entityId: String(id),
       source: 'admin',
       performedBy,
+      details: { name: existing.name },
     });
   }
 }

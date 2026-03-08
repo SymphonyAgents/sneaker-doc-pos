@@ -1,12 +1,17 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, and } from 'drizzle-orm';
 import { DrizzleService } from '../db/drizzle.service';
-import { users } from '../db/schema';
+import { AuditService } from '../audit/audit.service';
+import { users, staffDocuments } from '../db/schema';
 import type { UserType } from '../db/constants';
+import type { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly drizzle: DrizzleService) {}
+  constructor(
+    private readonly drizzle: DrizzleService,
+    private readonly audit: AuditService,
+  ) {}
 
   async findOrCreate(id: string, email: string) {
     const [existing] = await this.drizzle.db
@@ -48,10 +53,33 @@ export class UsersService {
   }
 
   async findAll() {
-    return this.drizzle.db.select().from(users).orderBy(asc(users.createdAt));
+    return this.drizzle.db
+      .select()
+      .from(users)
+      .where(eq(users.isActive, true))
+      .orderBy(asc(users.createdAt));
   }
 
-  async updateUserType(id: string, userType: UserType) {
+  async remove(id: string, performedBy?: string) {
+    const user = await this.findById(id);
+    if (!user) throw new NotFoundException('User not found');
+
+    await this.drizzle.db
+      .update(users)
+      .set({ isActive: false })
+      .where(and(eq(users.id, id), eq(users.isActive, true)));
+
+    await this.audit.log({
+      action: `Deactivated user: ${user.email}`,
+      entityType: 'user',
+      entityId: id,
+      source: 'admin',
+      performedBy,
+      details: { email: user.email },
+    });
+  }
+
+  async updateUserType(id: string, userType: UserType, performedBy?: string) {
     const user = await this.findById(id);
     if (!user) throw new NotFoundException('User not found');
 
@@ -60,10 +88,63 @@ export class UsersService {
       .set({ userType })
       .where(eq(users.id, id))
       .returning();
+
+    await this.audit.log({
+      action: `Updated user role: ${user.email} → ${userType}`,
+      entityType: 'user',
+      entityId: id,
+      source: 'admin',
+      performedBy,
+      details: { email: user.email, prevRole: user.userType, newRole: userType },
+    });
+
     return updated;
   }
 
-  async updateBranch(id: string, branchId: number) {
+  async updateProfile(id: string, dto: UpdateUserProfileDto, performedBy?: string) {
+    const user = await this.findById(id);
+    if (!user) throw new NotFoundException('User not found');
+
+    const [updated] = await this.drizzle.db
+      .update(users)
+      .set(dto)
+      .where(eq(users.id, id))
+      .returning();
+
+    await this.audit.log({
+      action: `Updated profile: ${user.email}`,
+      entityType: 'user',
+      entityId: id,
+      source: 'admin',
+      performedBy,
+    });
+
+    return updated;
+  }
+
+  async getDocuments(staffId: string) {
+    return this.drizzle.db
+      .select()
+      .from(staffDocuments)
+      .where(eq(staffDocuments.staffId, staffId))
+      .orderBy(asc(staffDocuments.uploadedAt));
+  }
+
+  async addDocument(staffId: string, url: string, label?: string) {
+    const [doc] = await this.drizzle.db
+      .insert(staffDocuments)
+      .values({ staffId, url, label: label ?? null })
+      .returning();
+    return doc;
+  }
+
+  async removeDocument(staffId: string, docId: number) {
+    await this.drizzle.db
+      .delete(staffDocuments)
+      .where(and(eq(staffDocuments.id, docId), eq(staffDocuments.staffId, staffId)));
+  }
+
+  async updateBranch(id: string, branchId: number, performedBy?: string) {
     const user = await this.findById(id);
     if (!user) throw new NotFoundException('User not found');
 
@@ -72,6 +153,16 @@ export class UsersService {
       .set({ branchId })
       .where(eq(users.id, id))
       .returning();
+
+    await this.audit.log({
+      action: `Updated user branch: ${user.email} → branch ${branchId}`,
+      entityType: 'user',
+      entityId: id,
+      source: 'admin',
+      performedBy,
+      details: { email: user.email, prevBranchId: user.branchId, newBranchId: branchId },
+    });
+
     return updated;
   }
 }

@@ -1,10 +1,12 @@
 'use client';
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeftIcon, PlusIcon, EnvelopeIcon } from '@phosphor-icons/react';
+import { useRouter } from 'next/navigation';
+import { QRCodeSVG } from 'qrcode.react';
+import { ArrowLeftIcon, PlusIcon, EnvelopeIcon, PaperPlaneTiltIcon, TrashIcon } from '@phosphor-icons/react';
 import { Lightbox } from '@/components/ui/lightbox';
 import Link from 'next/link';
-import { formatPeso, formatDate, formatDatetime, PAYMENT_METHOD_LABELS, cn } from '@/lib/utils';
+import { formatPeso, formatDate, formatDatetime, formatAddress, PAYMENT_METHOD_LABELS, cn } from '@/lib/utils';
 import { toTitleCase } from '@/utils/text';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
@@ -31,33 +33,52 @@ import {
   useUpdateTransactionMutation,
   useUpdateItemStatusMutation,
   useAddPaymentMutation,
+  useDeleteTransactionMutation,
 } from '@/hooks/useTransactionsQuery';
+import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
 import { useUploadPhotoMutation } from '@/hooks/useUploadPhoto';
-import { PAYMENT_METHOD_VALUES } from '@/lib/constants';
-import { generateGmailLink, EMAIL_TEMPLATES, EMAIL_TEMPLATE_LABELS } from '@/utils/email';
+import { PAYMENT_METHOD_VALUES, TRANSACTION_STATUS } from '@/lib/constants';
+import { toPng } from 'html-to-image';
+import { toast } from 'sonner';
+import { api } from '@/lib/api';
+import { generateGmailLink, generateGmailLinkNoBody, EMAIL_TEMPLATES, EMAIL_TEMPLATE_LABELS } from '@/utils/email';
+import { ClaimStubPreview } from '@/components/transactions/ClaimStubPreview';
 import type { EmailTemplateKey } from '@/utils/email';
 import type { PaymentMethod } from '@/lib/types';
 import { ItemStatusConfirmDialog, type PendingItemChange } from '@/components/transactions/ItemStatusConfirmDialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 export default function TransactionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const router = useRouter();
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentRef, setPaymentRef] = useState('');
   const [paymentError, setPaymentError] = useState('');
 
   const [emailTemplate, setEmailTemplate] = useState<EmailTemplateKey>(EMAIL_TEMPLATES.pickup_ready);
   const [lightbox, setLightbox] = useState<{ src: string; label: string } | null>(null);
   const [uploadingItemIds, setUploadingItemIds] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const pendingUploadRef = useRef<{ itemId: number; type: 'before' | 'after' } | null>(null);
+  const stubRef = useRef<HTMLDivElement>(null);
+
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [smsDialogOpen, setSmsDialogOpen] = useState(false);
+  const [smsSending, setSmsSending] = useState(false);
 
   const [rescheduleValue, setRescheduleValue] = useState('');
   const [noteValue, setNoteValue] = useState('');
   const initializedRef = useRef<string | null>(null);
 
+  const { data: currentUser } = useCurrentUserQuery();
+  const isAdmin = currentUser?.userType === 'admin' || currentUser?.userType === 'superadmin';
+
   const { data: txn, isLoading, isFetching } = useTransactionDetailQuery(id);
   const updateTxnMut = useUpdateTransactionMutation(id);
+  const deleteTxnMut = useDeleteTransactionMutation(() => router.replace('/transactions'));
   const updateItemStatusMut = useUpdateItemStatusMutation(id);
   const uploadPhotoMut = useUploadPhotoMutation(id);
 
@@ -87,6 +108,11 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
     fileInputRef.current?.click();
   }, []);
 
+  const handleCameraClick = useCallback((itemId: number, type: 'before' | 'after') => {
+    pendingUploadRef.current = { itemId, type };
+    cameraInputRef.current?.click();
+  }, []);
+
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -113,6 +139,33 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
     [txn, uploadPhotoMut],
   );
 
+  const txnBalance = txn ? parseFloat(txn.total) - parseFloat(txn.paid) : 0;
+
+  // The single remaining non-claimed, non-cancelled item — balance gates only this one
+  const lastClaimableItemId = useMemo(() => {
+    if (!txn?.items) return null;
+    const claimable = txn.items.filter(
+      (i) => i.status !== 'claimed' && i.status !== 'cancelled',
+    );
+    return claimable.length === 1 ? claimable[0].id : null;
+  }, [txn?.items]);
+
+  async function handleSendPickupSms() {
+    if (!txn) return;
+    setSmsDialogOpen(true);
+    setSmsSending(true);
+    try {
+      await api.transactions.sendPickupReadySms(txn.id);
+      setSmsDialogOpen(false);
+      toast.success(`SMS sent to ${txn.customerPhone}`);
+    } catch {
+      setSmsDialogOpen(false);
+      toast.error('Failed to send SMS. Please try again.');
+    } finally {
+      setSmsSending(false);
+    }
+  }
+
   const itemColumns = useMemo(
     () => createTransactionItemColumns({
       onStatusChange: (itemId, status) => {
@@ -127,11 +180,14 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
       },
       onImageClick: (src, label) => setLightbox({ src, label }),
       onUploadClick: handleUploadClick,
+      onCameraClick: handleCameraClick,
       loadingItemIds,
       uploadingItemIds,
+      disableUploadBefore: true,
+      txnBalance,
+      lastClaimableItemId,
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [loadingItemIds, uploadingItemIds, handleUploadClick],
+    [loadingItemIds, uploadingItemIds, handleUploadClick, handleCameraClick, txnBalance, lastClaimableItemId],
   );
   const addPaymentMut = useAddPaymentMutation(id, () => {
     setPaymentDialogOpen(false);
@@ -152,7 +208,8 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   if (!txn) return <p className="text-sm text-zinc-400">Transaction not found.</p>;
 
   const balance = parseFloat(txn.total) - parseFloat(txn.paid);
-  const txnLocked = ['cancelled', 'claimed'].includes(txn.status);
+  const refundAmount = balance < 0 ? Math.abs(balance) : 0;
+  const txnLocked = ([TRANSACTION_STATUS.CANCELLED, TRANSACTION_STATUS.CLAIMED] as string[]).includes(txn.status);
 
   return (
     <div>
@@ -166,6 +223,12 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
             </Button>
           </Link>
         }
+        action={isAdmin ? (
+          <Button variant="danger" size="sm" onClick={() => setDeleteConfirmOpen(true)}>
+            <TrashIcon size={14} />
+            Delete
+          </Button>
+        ) : undefined}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -176,7 +239,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
             <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-3">
               Customer
             </h2>
-            <div className={cn('grid grid-cols-1 gap-4', txn.newPickupDate ? 'sm:grid-cols-4' : 'sm:grid-cols-3')}>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               <div>
                 <p className="text-xs text-zinc-400">Name</p>
                 <p className="text-sm font-medium text-zinc-950">{toTitleCase(txn.customerName) || '—'}</p>
@@ -189,6 +252,12 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                 <p className="text-xs text-zinc-400">Original Pickup</p>
                 <p className="text-sm text-zinc-700">{formatDate(txn.pickupDate)}</p>
               </div>
+              {txn.staffNickname && (
+                <div>
+                  <p className="text-xs text-zinc-400">Staff</p>
+                  <p className="text-sm text-zinc-700">{txn.staffNickname}</p>
+                </div>
+              )}
               {txn.newPickupDate && (
                 <div>
                   <p className="text-xs text-amber-600">Rescheduled</p>
@@ -196,6 +265,19 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                 </div>
               )}
             </div>
+            {(txn.customerStreetName || txn.customerBarangay || txn.customerCity || txn.customerProvince) && (
+              <div className="mt-3 pt-3 border-t border-zinc-100">
+                <p className="text-xs text-zinc-400 mb-1">Address</p>
+                <p className="text-sm text-zinc-700">
+                  {formatAddress({
+                    streetName: txn.customerStreetName,
+                    barangay: txn.customerBarangay,
+                    city: txn.customerCity,
+                    province: txn.customerProvince,
+                  })}
+                </p>
+              </div>
+            )}
 
             {!txnLocked && (
               <div className="mt-3 pt-3 border-t border-zinc-100 grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -256,9 +338,15 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
 
           {/* Items */}
           <div>
-            <p className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-2">
-              Shoes & Services ({txn.items?.length ?? 0} items)
-            </p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                Shoes & Services ({txn.items?.length ?? 0} items)
+              </p>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Overall Status</span>
+                <StatusBadge status={txn.status} />
+              </div>
+            </div>
             <DataTable
               columns={itemColumns}
               data={[...(txn.items ?? [])].sort((a, b) => a.id - b.id)}
@@ -307,86 +395,144 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
               </div>
             </div>
 
-            <Button
-              variant="dark"
-              size="sm"
-              className="w-full mt-4"
-              disabled={balance <= 0}
-              onClick={() => { setPaymentDialogOpen(true); setPaymentError(''); }}
-            >
-              <PlusIcon size={13} />
-              {balance <= 0 ? 'Fully Paid' : 'Add Payment'}
-            </Button>
+            {refundAmount > 0 ? (
+              <Button
+                variant="danger"
+                size="sm"
+                className="w-full mt-4"
+                onClick={() => setPaymentDialogOpen(true)}
+              >
+                Refund Payment · {formatPeso(refundAmount)}
+              </Button>
+            ) : (
+              <Button
+                variant="dark"
+                size="sm"
+                className="w-full mt-4"
+                disabled={balance <= 0}
+                onClick={() => { setPaymentDialogOpen(true); setPaymentError(''); }}
+              >
+                <PlusIcon size={13} />
+                {balance <= 0 ? 'Fully Paid' : 'Add Payment'}
+              </Button>
+            )}
           </div>
 
           <Dialog
             open={paymentDialogOpen}
             onOpenChange={(open) => {
               setPaymentDialogOpen(open);
-              if (!open) { setPaymentAmount(''); setPaymentError(''); }
+              if (!open) { setPaymentAmount(''); setPaymentRef(''); setPaymentError(''); }
             }}
           >
             <DialogContent className="bg-white sm:max-w-sm">
-              <DialogHeader>
-                <DialogTitle className="text-base">Record Payment</DialogTitle>
-                <DialogDescription className="text-xs text-zinc-400">
-                  #{txn.number} — Balance: <span className="font-mono font-medium text-amber-600">{formatPeso(balance)}</span>
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-3 pt-1">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium text-zinc-700">Method</label>
-                  <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}>
-                    <SelectTrigger className="h-9 text-sm w-full border-zinc-200">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PAYMENT_METHOD_VALUES.map((m) => (
-                        <SelectItem key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium text-zinc-700">Amount (₱)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={paymentAmount}
-                    onChange={(e) => { setPaymentAmount(e.target.value); setPaymentError(''); }}
-                    className={cn(
-                      'w-full px-3 py-2 text-sm bg-white border rounded-md font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500',
-                      paymentError ? 'border-red-400' : 'border-zinc-200',
-                    )}
-                    placeholder="0.00"
-                    autoFocus
-                  />
-                  {paymentError && (
-                    <p className="text-xs text-red-500">{paymentError}</p>
-                  )}
-                </div>
-                <Button
-                  size="sm"
-                  variant="dark"
-                  className="w-full"
-                  disabled={!paymentAmount || addPaymentMut.isPending}
-                  onClick={() => {
-                    const amt = parseFloat(paymentAmount);
-                    if (isNaN(amt) || amt <= 0) {
-                      setPaymentError('Enter a valid amount');
-                      return;
-                    }
-                    if (amt > balance) {
-                      setPaymentError(`Amount exceeds remaining balance of ${formatPeso(balance)}`);
-                      return;
-                    }
-                    addPaymentMut.mutate({ method: paymentMethod, amount: paymentAmount });
-                  }}
-                >
-                  {addPaymentMut.isPending ? <Spinner /> : 'Record Payment'}
-                </Button>
-              </div>
+              {refundAmount > 0 ? (
+                <>
+                  <DialogHeader>
+                    <DialogTitle className="text-base">Refund Payment</DialogTitle>
+                    <DialogDescription className="text-xs text-zinc-400">
+                      #{txn.number} — Refund to customer
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-3 pt-1">
+                    <div className="bg-red-50 border border-red-100 rounded-md p-3 text-center">
+                      <p className="text-xs text-red-600 mb-1">Refund amount</p>
+                      <p className="font-mono text-xl font-semibold text-red-700">{formatPeso(refundAmount)}</p>
+                      <p className="text-xs text-zinc-400 mt-1">Paid {formatPeso(txn.paid)} · New total {formatPeso(txn.total)}</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      className="w-full"
+                      disabled={updateTxnMut.isPending}
+                      onClick={() => updateTxnMut.mutate({ paid: txn.total }, {
+                        onSuccess: () => setPaymentDialogOpen(false),
+                      })}
+                    >
+                      {updateTxnMut.isPending ? <Spinner /> : 'Confirm Refund'}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <DialogHeader>
+                    <DialogTitle className="text-base">Record Payment</DialogTitle>
+                    <DialogDescription className="text-xs text-zinc-400">
+                      #{txn.number} — Balance: <span className="font-mono font-medium text-amber-600">{formatPeso(balance)}</span>
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-3 pt-1">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-medium text-zinc-700">Method</label>
+                        <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}>
+                          <SelectTrigger className="h-9 text-sm w-full border-zinc-200">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {PAYMENT_METHOD_VALUES.map((m) => (
+                              <SelectItem key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-medium text-zinc-700">Reference #</label>
+                        <input
+                          type="text"
+                          value={paymentRef}
+                          onChange={(e) => setPaymentRef(e.target.value)}
+                          className="w-full px-3 py-2 text-sm bg-white border border-zinc-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                          placeholder="e.g. GCash ref"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-medium text-zinc-700">Amount (₱)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={paymentAmount}
+                        onChange={(e) => { setPaymentAmount(e.target.value); setPaymentError(''); }}
+                        className={cn(
+                          'w-full px-3 py-2 text-sm bg-white border rounded-md font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500',
+                          paymentError ? 'border-red-400' : 'border-zinc-200',
+                        )}
+                        placeholder="0.00"
+                        autoFocus
+                      />
+                      {paymentError && (
+                        <p className="text-xs text-red-500">{paymentError}</p>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="dark"
+                      className="w-full"
+                      disabled={!paymentAmount || addPaymentMut.isPending}
+                      onClick={() => {
+                        const amt = parseFloat(paymentAmount);
+                        if (isNaN(amt) || amt <= 0) {
+                          setPaymentError('Enter a valid amount');
+                          return;
+                        }
+                        if (amt > balance) {
+                          setPaymentError(`Amount exceeds remaining balance of ${formatPeso(balance)}`);
+                          return;
+                        }
+                        addPaymentMut.mutate({
+                          method: paymentMethod,
+                          amount: paymentAmount,
+                          ...(paymentRef.trim() ? { referenceNumber: paymentRef.trim() } : {}),
+                        });
+                      }}
+                    >
+                      {addPaymentMut.isPending ? <Spinner /> : 'Record Payment'}
+                    </Button>
+                  </div>
+                </>
+              )}
             </DialogContent>
           </Dialog>
 
@@ -402,6 +548,9 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                     <div>
                       <p className="text-xs font-medium text-zinc-700">
                         {PAYMENT_METHOD_LABELS[p.method]}
+                        {p.referenceNumber && (
+                          <span className="ml-1.5 font-mono font-normal text-zinc-400">#{p.referenceNumber}</span>
+                        )}
                       </p>
                       <p className="text-xs text-zinc-400">{formatDatetime(p.paidAt)}</p>
                     </div>
@@ -412,13 +561,59 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
             </div>
           )}
 
-          {/* Status */}
+          {/* QR Code */}
           <div className="bg-white border border-zinc-200 rounded-lg p-5">
             <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-3">
-              Status
+              QR Code
             </h2>
-            <StatusBadge status={txn.status} />
+            <div className="flex flex-col items-center gap-2">
+              <QRCodeSVG
+                value={txn.number}
+                size={140}
+                level="M"
+                className="rounded"
+              />
+              <p className="text-xs font-mono text-zinc-400">#{txn.number}</p>
+            </div>
+            {txn.customerPhone && (
+              <button
+                type="button"
+                onClick={handleSendPickupSms}
+                className="mt-4 flex items-center justify-center gap-2 w-full px-3 py-2 text-sm font-medium bg-zinc-200 text-zinc-800 rounded-md hover:bg-zinc-300 transition-colors duration-150"
+              >
+                <PaperPlaneTiltIcon size={13} />
+                Send SMS — Ready for Pickup
+              </button>
+            )}
           </div>
+
+          {/* SMS sending dialog */}
+          <Dialog open={smsDialogOpen} onOpenChange={(o) => { if (!smsSending) setSmsDialogOpen(o); }}>
+            <DialogContent className="bg-white sm:max-w-xs">
+              <div className="flex flex-col items-center gap-4 py-6 px-4 text-center">
+                <div
+                  style={{
+                    animation: 'sms-plane 1.2s ease-in-out infinite',
+                  }}
+                >
+                  <PaperPlaneTiltIcon size={40} className="text-zinc-950" weight="fill" />
+                </div>
+                <style>{`
+                  @keyframes sms-plane {
+                    0%   { transform: translate(0, 0) rotate(-10deg); opacity: 1; }
+                    50%  { transform: translate(6px, -8px) rotate(10deg); opacity: 0.7; }
+                    100% { transform: translate(0, 0) rotate(-10deg); opacity: 1; }
+                  }
+                `}</style>
+                <div>
+                  <p className="text-sm font-medium text-zinc-950">Sending SMS</p>
+                  <p className="text-xs text-zinc-400 mt-1">
+                    Notifying {txn.customerName ?? 'customer'} that their shoes are ready for pickup.
+                  </p>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           {/* Email customer */}
           {txn.customerEmail && (
@@ -438,26 +633,57 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                     ))}
                   </SelectContent>
                 </Select>
-                <a
-                  href={generateGmailLink(txn, emailTemplate)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 w-full px-3 py-2 text-sm font-medium bg-zinc-950 text-white rounded-md hover:bg-zinc-800 transition-colors duration-150"
+                <button
+                  type="button"
+                  className="flex items-center justify-center gap-2 w-full px-3 py-2 text-sm font-medium bg-zinc-200 text-zinc-800 rounded-md hover:bg-zinc-300 transition-colors duration-150"
+                  onClick={async () => {
+                    if (emailTemplate === EMAIL_TEMPLATES.claim_stub) {
+                      const link = generateGmailLinkNoBody(txn, EMAIL_TEMPLATES.claim_stub);
+                      try {
+                        if (!stubRef.current) throw new Error('ref missing');
+                        const dataUrl = await toPng(stubRef.current, { pixelRatio: 2 });
+                        const res = await fetch(dataUrl);
+                        const blob = await res.blob();
+                        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+                        toast.success('Stub image copied', { description: 'Paste into the Gmail compose body' });
+                      } catch {
+                        // fallback silently
+                      }
+                      window.open(link, '_blank');
+                    } else {
+                      window.open(generateGmailLink(txn, emailTemplate), '_blank');
+                    }
+                  }}
                 >
                   <EnvelopeIcon size={13} />
                   Open in Gmail
-                </a>
+                </button>
               </div>
+            </div>
+          )}
+
+          {/* Off-screen stub render used for screenshot capture on claim_stub email */}
+          {txn && emailTemplate === EMAIL_TEMPLATES.claim_stub && (
+            <div style={{ position: 'fixed', left: '-9999px', top: 0, width: '320px' }}>
+              <ClaimStubPreview ref={stubRef} txn={txn} />
             </div>
           )}
         </div>
       </div>
 
-      {/* Hidden file input — triggered programmatically by handleUploadClick */}
+      {/* Hidden file inputs — triggered programmatically */}
       <input
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
         className="hidden"
         onChange={handleFileChange}
       />
@@ -472,7 +698,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
       <ItemStatusConfirmDialog
         open={pendingItemChange !== null}
         pendingChange={pendingItemChange}
-        customerName={txn.customerName}
+        customerName={txn.customerName ?? ''}
         loading={updateItemStatusMut.isPending}
         onConfirm={() => {
           if (!pendingItemChange) return;
@@ -481,6 +707,15 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
           updateItemStatusMut.mutate({ itemId: pendingItemChange.itemId, status: pendingItemChange.newStatus });
         }}
         onCancel={() => setPendingItemChange(null)}
+      />
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="Delete transaction?"
+        description={`Delete #${txn.number}? It will be moved to trash and can be restored from the Transactions page.`}
+        onConfirm={() => { setDeleteConfirmOpen(false); deleteTxnMut.mutate(txn.id); }}
+        onCancel={() => setDeleteConfirmOpen(false)}
+        loading={deleteTxnMut.isPending}
       />
     </div>
   );

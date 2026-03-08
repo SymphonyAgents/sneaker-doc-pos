@@ -5,10 +5,15 @@ import { api } from '@/lib/api';
 
 export const AUDIT_KEY = ['audit'] as const;
 
-export function useAuditQuery() {
+export interface AuditFilters {
+  month?: number;
+  year?: number;
+  performedBy?: string;
+}
+
+export function useAuditQuery(filters?: AuditFilters) {
   return useQuery({
-    queryKey: AUDIT_KEY,
-    queryFn: () => api.audit.list(),
-    staleTime: 60 * 1000,
+    queryKey: [...AUDIT_KEY, filters],
+    queryFn: () => api.audit.list(filters),
   });
 }

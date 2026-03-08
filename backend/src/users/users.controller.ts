@@ -3,17 +3,23 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   Request,
+  Req,
   UseGuards,
   NotFoundException,
+  HttpCode,
+  ParseIntPipe,
 } from '@nestjs/common';
+import type { AuthedRequest } from '../auth/auth.types';
 import { SupabaseAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { UsersService } from './users.service';
 import type { UserType } from '../db/constants';
+import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 
 @Controller('users')
 @UseGuards(SupabaseAuthGuard)
@@ -47,17 +53,73 @@ export class UsersController {
     return this.usersService.findAll();
   }
 
+  @Get(':id')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'superadmin')
+  async findOne(@Param('id') id: string) {
+    const user = await this.usersService.findById(id);
+    if (!user) throw new NotFoundException('User not found');
+    return user;
+  }
+
+  @Patch(':id/profile')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'superadmin')
+  updateProfile(
+    @Param('id') id: string,
+    @Body() dto: UpdateUserProfileDto,
+    @Req() req: AuthedRequest,
+  ) {
+    return this.usersService.updateProfile(id, dto, req.user?.id);
+  }
+
+  @Get(':id/documents')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'superadmin')
+  getDocuments(@Param('id') id: string) {
+    return this.usersService.getDocuments(id);
+  }
+
+  @Post(':id/documents')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'superadmin')
+  addDocument(
+    @Param('id') id: string,
+    @Body() body: { url: string; label?: string },
+  ) {
+    return this.usersService.addDocument(id, body.url, body.label);
+  }
+
+  @Delete(':id/documents/:docId')
+  @HttpCode(204)
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'superadmin')
+  removeDocument(
+    @Param('id') id: string,
+    @Param('docId', ParseIntPipe) docId: number,
+  ) {
+    return this.usersService.removeDocument(id, docId);
+  }
+
   @Patch(':id/role')
   @UseGuards(RolesGuard)
   @Roles('admin', 'superadmin')
-  updateRole(@Param('id') id: string, @Body() body: { userType: UserType }) {
-    return this.usersService.updateUserType(id, body.userType);
+  updateRole(@Param('id') id: string, @Body() body: { userType: UserType }, @Req() req: AuthedRequest) {
+    return this.usersService.updateUserType(id, body.userType, req.user?.id);
   }
 
   @Patch(':id/branch')
   @UseGuards(RolesGuard)
   @Roles('superadmin')
-  updateBranch(@Param('id') id: string, @Body() body: { branchId: number }) {
-    return this.usersService.updateBranch(id, body.branchId);
+  updateBranch(@Param('id') id: string, @Body() body: { branchId: number }, @Req() req: AuthedRequest) {
+    return this.usersService.updateBranch(id, body.branchId, req.user?.id);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  @UseGuards(RolesGuard)
+  @Roles('superadmin')
+  remove(@Param('id') id: string, @Req() req: AuthedRequest) {
+    return this.usersService.remove(id, req.user?.id);
   }
 }

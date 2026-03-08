@@ -23,7 +23,6 @@ export function useCurrentUserQuery() {
         throw err;
       }
     },
-    staleTime: 5 * 60 * 1000,
     retry: false,
   });
 }

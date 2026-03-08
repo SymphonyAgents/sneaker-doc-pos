@@ -48,9 +48,11 @@ export function CustomerLookupSection({
       if (customer) {
         if (customer.name) setValue('customerName', customer.name);
         if (customer.email) setValue('customerEmail', customer.email);
+        if (customer.city) setValue('customerCity', customer.city);
       } else {
         setValue('customerName', '');
         setValue('customerEmail', '');
+        setValue('customerCity', '');
       }
       onCustomerResolved(customer);
     } catch {
@@ -111,6 +113,7 @@ export function CustomerLookupSection({
           </div>
         ) : (
           <>
+            {/* Row: Name (full width) */}
             <div className="col-span-2 flex flex-col gap-1.5">
               <Input
                 label="Name"
@@ -121,6 +124,8 @@ export function CustomerLookupSection({
                 <p className="text-xs text-red-500">{errors.customerName.message}</p>
               )}
             </div>
+
+            {/* Row: Phone + Email */}
             <div className="flex flex-col gap-1.5">
               <span className="text-xs font-medium text-zinc-700">Phone</span>
               <Input
@@ -144,6 +149,15 @@ export function CustomerLookupSection({
               {errors.customerEmail && (
                 <p className="text-xs text-red-500">{errors.customerEmail.message}</p>
               )}
+            </div>
+
+            {/* City */}
+            <div className="col-span-2 flex flex-col gap-1.5">
+              <Input
+                label="City"
+                placeholder="e.g. Cebu City"
+                {...register('customerCity')}
+              />
             </div>
           </>
         )}

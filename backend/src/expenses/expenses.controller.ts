@@ -16,24 +16,32 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import type { AuthedRequest } from '../auth/auth.types';
 import { ExpensesService } from './expenses.service';
+import { UsersService } from '../users/users.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 
 @Controller('expenses')
 export class ExpensesController {
-  constructor(private readonly expensesService: ExpensesService) {}
+  constructor(
+    private readonly expensesService: ExpensesService,
+    private readonly usersService: UsersService,
+  ) {}
 
   // Requires auth — financial data must not be public
   @UseGuards(SupabaseAuthGuard)
   @Get()
-  findByDate(@Query('date') date: string) {
-    return this.expensesService.findByDate(date);
+  async findByDate(@Query('date') date: string, @Req() req: AuthedRequest) {
+    const dbUser = await this.usersService.findById(req.user.id);
+    const isStaff = dbUser?.userType === 'staff';
+    return this.expensesService.findByDate(date, isStaff ? req.user.id : undefined);
   }
 
   @UseGuards(SupabaseAuthGuard)
   @Get('summary')
-  summary(@Query('date') date: string) {
-    return this.expensesService.summary(date);
+  async summary(@Query('date') date: string, @Req() req: AuthedRequest) {
+    const dbUser = await this.usersService.findById(req.user.id);
+    const isStaff = dbUser?.userType === 'staff';
+    return this.expensesService.summary(date, isStaff ? req.user.id : undefined);
   }
 
   @UseGuards(SupabaseAuthGuard, RolesGuard)

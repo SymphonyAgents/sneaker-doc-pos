@@ -11,9 +11,12 @@ import {
   lte,
   and,
   not,
+  ne,
   inArray,
   ilike,
   or,
+  isNotNull,
+  isNull,
 } from 'drizzle-orm';
 import { DrizzleService } from '../db/drizzle.service';
 import {
@@ -23,6 +26,8 @@ import {
   customers,
   promos,
   services,
+  branches,
+  users as usersTable, // alias to avoid conflict with this.users (UsersService)
 } from '../db/schema';
 import {
   TRANSACTION_STATUS,
@@ -31,6 +36,7 @@ import {
 } from '../db/constants';
 import { AuditService } from '../audit/audit.service';
 import { UsersService } from '../users/users.service';
+import { SmsService } from '../sms/sms.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { AddPaymentDto } from './dto/add-payment.dto';
@@ -58,6 +64,7 @@ export class TransactionsService {
     private readonly drizzle: DrizzleService,
     private readonly audit: AuditService,
     private readonly users: UsersService,
+    private readonly sms: SmsService,
   ) {}
 
   // Generate next zero-padded transaction number using a DB sequence-safe query
@@ -76,6 +83,9 @@ export class TransactionsService {
     const offset = (page - 1) * limit;
 
     const conditions: ReturnType<typeof eq>[] = [];
+
+    // Always exclude soft-deleted transactions
+    conditions.push(isNull(transactions.deletedAt) as ReturnType<typeof eq>);
 
     if (status) conditions.push(eq(transactions.status, status));
     if (branchId) conditions.push(eq(transactions.branchId, branchId));
@@ -108,9 +118,11 @@ export class TransactionsService {
 
   async findOne(id: number) {
     const [row] = await this.drizzle.db
-      .select({ txn: transactions, promo: promos })
+      .select({ txn: transactions, promo: promos, staff: usersTable, branch: branches })
       .from(transactions)
       .leftJoin(promos, eq(transactions.promoId, promos.id))
+      .leftJoin(usersTable, eq(transactions.staffId, usersTable.id))
+      .leftJoin(branches, eq(transactions.branchId, branches.id))
       .where(eq(transactions.id, id));
     if (!row) throw new NotFoundException(`Transaction ${id} not found`);
 
@@ -153,11 +165,43 @@ export class TransactionsService {
       .from(claimPayments)
       .where(eq(claimPayments.transactionId, id));
 
+    // Fetch customer address if phone is available
+    let customerAddress: {
+      streetName: string | null;
+      barangay: string | null;
+      city: string | null;
+      province: string | null;
+    } | null = null;
+    if (row.txn.customerPhone) {
+      const [cust] = await this.drizzle.db
+        .select({
+          streetName: customers.streetName,
+          barangay: customers.barangay,
+          city: customers.city,
+          province: customers.province,
+        })
+        .from(customers)
+        .where(eq(customers.phone, row.txn.customerPhone))
+        .limit(1);
+      customerAddress = cust ?? null;
+    }
+
     return {
       ...mapTxn(row.txn),
       promo: row.promo ?? null,
       items,
       payments: payments.map((p) => ({ ...p, amount: fromScaled(p.amount) })),
+      customerStreetName: customerAddress?.streetName ?? null,
+      customerBarangay: customerAddress?.barangay ?? null,
+      customerCity: customerAddress?.city ?? null,
+      customerProvince: customerAddress?.province ?? null,
+      staffNickname: row.staff?.nickname ?? null,
+      branchName: row.branch?.name ?? null,
+      branchStreetName: row.branch?.streetName ?? null,
+      branchBarangay: row.branch?.barangay ?? null,
+      branchCity: row.branch?.city ?? null,
+      branchProvince: row.branch?.province ?? null,
+      branchPhone: row.branch?.phone ?? null,
     };
   }
 
@@ -165,7 +209,7 @@ export class TransactionsService {
     const [txn] = await this.drizzle.db
       .select()
       .from(transactions)
-      .where(eq(transactions.number, number));
+      .where(and(eq(transactions.number, number), isNull(transactions.deletedAt)));
     if (!txn) throw new NotFoundException(`Transaction ${number} not found`);
     return this.findOne(txn.id);
   }
@@ -203,6 +247,7 @@ export class TransactionsService {
         paid: toScaled(dto.paid ?? '0'),
         promoId: dto.promoId ?? null,
         branchId: branchId ?? null,
+        staffId: performedBy ?? null,
         updatedAt: new Date(),
       })
       .returning();
@@ -234,6 +279,11 @@ export class TransactionsService {
           phone: dto.customerPhone,
           name: dto.customerName ?? null,
           email: dto.customerEmail ?? null,
+          streetName: dto.customerStreetName ?? null,
+          barangay: dto.customerBarangay ?? null,
+          city: dto.customerCity ?? null,
+          province: dto.customerProvince ?? null,
+          country: dto.customerCountry ?? null,
           updatedAt: new Date(),
         })
         .onConflictDoUpdate({
@@ -241,6 +291,11 @@ export class TransactionsService {
           set: {
             name: dto.customerName ?? null,
             email: dto.customerEmail ?? null,
+            streetName: dto.customerStreetName ?? null,
+            barangay: dto.customerBarangay ?? null,
+            city: dto.customerCity ?? null,
+            province: dto.customerProvince ?? null,
+            country: dto.customerCountry ?? null,
             updatedAt: new Date(),
           },
         });
@@ -320,6 +375,7 @@ export class TransactionsService {
         auditType = AUDIT_TYPE.TRANSACTION_CLAIMED;
       } else if (dto.status === TRANSACTION_STATUS.CANCELLED) {
         auditType = AUDIT_TYPE.TRANSACTION_CANCELLED;
+        auditDetails = { from: prevStatus, to: dto.status, refundedAmount: existing.paid };
       } else {
         auditType = AUDIT_TYPE.TRANSACTION_STATUS_CHANGED;
       }
@@ -356,6 +412,7 @@ export class TransactionsService {
     const rows = await this.drizzle.db
       .select()
       .from(transactions)
+      .where(isNull(transactions.deletedAt))
       .orderBy(desc(transactions.createdAt))
       .limit(limit);
     return rows.map(mapTxn);
@@ -371,25 +428,69 @@ export class TransactionsService {
       .from(transactions)
       .where(
         and(
-          gte(transactions.pickupDate, today),
-          lte(transactions.pickupDate, plus3),
-          not(inArray(transactions.status, ['claimed', 'cancelled'])),
+          isNull(transactions.deletedAt),
+          not(inArray(transactions.status, ['done', 'claimed', 'cancelled'])),
+          or(
+            // original pickup date within 3 days
+            and(
+              gte(transactions.pickupDate, today),
+              lte(transactions.pickupDate, plus3),
+            ),
+            // OR rescheduled date within 3 days
+            and(
+              isNotNull(transactions.newPickupDate),
+              gte(transactions.newPickupDate, today),
+              lte(transactions.newPickupDate, plus3),
+            ),
+          ),
         ),
       )
-      .orderBy(transactions.pickupDate);
+      .orderBy(sql`COALESCE(${transactions.newPickupDate}, ${transactions.pickupDate}) ASC`);
+    return rows.map(mapTxn);
+  }
+
+  async findUpcomingByMonth(year: number, month: number) {
+    const from = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const to = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    const rows = await this.drizzle.db
+      .select()
+      .from(transactions)
+      .where(
+        and(
+          isNull(transactions.deletedAt),
+          not(inArray(transactions.status, ['claimed', 'cancelled'])),
+          or(
+            and(gte(transactions.pickupDate, from), lte(transactions.pickupDate, to)),
+            and(
+              isNotNull(transactions.newPickupDate),
+              gte(transactions.newPickupDate, from),
+              lte(transactions.newPickupDate, to),
+            ),
+          ),
+        ),
+      )
+      .orderBy(sql`COALESCE(${transactions.newPickupDate}, ${transactions.pickupDate}) ASC`);
     return rows.map(mapTxn);
   }
 
   async collectionsSummary(year: number, month: number, branchId?: number) {
-    const from = new Date(`${year}-${String(month).padStart(2, '0')}-01T00:00:00`);
-    const lastDay = new Date(year, month, 0).getDate();
-    const to = new Date(
-      `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}T23:59:59`,
-    );
+    // month=0 means full year
+    const from = month === 0
+      ? new Date(`${year}-01-01T00:00:00`)
+      : new Date(`${year}-${String(month).padStart(2, '0')}-01T00:00:00`);
+    const to = month === 0
+      ? new Date(`${year}-12-31T23:59:59`)
+      : (() => {
+          const lastDay = new Date(year, month, 0).getDate();
+          return new Date(`${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}T23:59:59`);
+        })();
 
     const conditions: ReturnType<typeof eq>[] = [
       gte(claimPayments.paidAt, from),
       lte(claimPayments.paidAt, to),
+      isNull(transactions.deletedAt) as ReturnType<typeof eq>,
+      ne(transactions.status, 'cancelled') as ReturnType<typeof eq>,
     ];
     if (branchId) conditions.push(eq(transactions.branchId, branchId));
 
@@ -429,12 +530,18 @@ export class TransactionsService {
       })
       .from(claimPayments)
       .innerJoin(transactions, eq(claimPayments.transactionId, transactions.id))
-      .where(sql`${claimPayments.paidAt}::date = ${today}::date`)
+      .where(
+        and(
+          sql`${claimPayments.paidAt}::date = ${today}::date` as ReturnType<typeof eq>,
+          isNull(transactions.deletedAt) as ReturnType<typeof eq>,
+          ne(transactions.status, 'cancelled') as ReturnType<typeof eq>,
+        ),
+      )
       .orderBy(desc(claimPayments.paidAt));
     return rows.map((r) => ({ ...r, amount: fromScaled(r.amount) }));
   }
 
-  // Auto-sync transaction status when items change (multi-item only)
+  // Auto-sync transaction status and total when items change
   private async syncTransactionStatus(transactionId: number): Promise<void> {
     const [txn] = await this.drizzle.db
       .select()
@@ -447,35 +554,65 @@ export class TransactionsService {
       .from(transactionItems)
       .where(eq(transactionItems.transactionId, transactionId));
 
-    if (items.length <= 1) return; // Only auto-sync multi-item transactions
+    const nonCancelled = items.filter((i) => i.status !== 'cancelled');
+    const cancelled = items.filter((i) => i.status === 'cancelled');
 
-    const nonCancelledItems = items.filter((i) => i.status !== 'cancelled');
-    if (nonCancelledItems.length === 0) return;
-
-    const allClaimed = nonCancelledItems.every((i) => i.status === 'claimed');
-    if (allClaimed && txn.status !== 'claimed') {
+    // All items cancelled → cancel the transaction
+    if (nonCancelled.length === 0) {
       await this.drizzle.db
         .update(transactions)
-        .set({
-          status: 'claimed',
-          claimedAt: new Date(),
-          updatedAt: new Date(),
-        })
+        .set({ status: 'cancelled', updatedAt: new Date() })
         .where(eq(transactions.id, transactionId));
       return;
     }
 
-    const someClaimed = nonCancelledItems.some((i) => i.status === 'claimed');
-    if (
-      someClaimed &&
-      txn.status !== 'in_progress' &&
-      txn.status !== 'claimed'
-    ) {
+    // Some items cancelled → recalculate total from non-cancelled item prices
+    if (cancelled.length > 0) {
+      const rawSubtotalScaled = nonCancelled.reduce(
+        (sum, i) => sum + (i.price ?? 0),
+        0,
+      );
+      let newTotalScaled = rawSubtotalScaled;
+      if (txn.promoId) {
+        const [promo] = await this.drizzle.db
+          .select()
+          .from(promos)
+          .where(eq(promos.id, txn.promoId));
+        if (promo) {
+          const discountFactor = 1 - parseFloat(promo.percent) / 100;
+          newTotalScaled = Math.round(rawSubtotalScaled * discountFactor);
+        }
+      }
       await this.drizzle.db
         .update(transactions)
-        .set({ status: 'in_progress', updatedAt: new Date() })
+        .set({ total: newTotalScaled, updatedAt: new Date() })
         .where(eq(transactions.id, transactionId));
     }
+
+    // Derive overall status using priority: in_progress > pending > done > claimed
+    // Applies to both single-item and multi-item transactions
+    const statuses = new Set(nonCancelled.map((i) => i.status));
+    let derived: string;
+    if (statuses.has('in_progress')) {
+      derived = 'in_progress';
+    } else if (statuses.has('pending')) {
+      derived = 'pending';
+    } else if (statuses.has('done')) {
+      derived = 'done'; // all done, or mix of done + claimed (shoes still to pick up)
+    } else {
+      derived = 'claimed'; // all non-cancelled items claimed
+    }
+
+    if (derived === txn.status) return;
+
+    await this.drizzle.db
+      .update(transactions)
+      .set({
+        status: derived,
+        ...(derived === 'claimed' ? { claimedAt: new Date() } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(transactions.id, transactionId));
   }
 
   async updateItem(
@@ -517,6 +654,9 @@ export class TransactionsService {
           from: existing.status,
           to: dto.status,
           shoe: existing.shoeDescription,
+          ...(dto.status === 'cancelled' && existing.price !== null
+            ? { refundedAmount: fromScaled(existing.price) }
+            : {}),
         },
       });
 
@@ -538,6 +678,7 @@ export class TransactionsService {
         transactionId: id,
         method: dto.method,
         amount: scaledAmount,
+        referenceNumber: dto.referenceNumber ?? null,
       })
       .returning();
 
@@ -564,16 +705,44 @@ export class TransactionsService {
         method: dto.method,
         amount: payment.amount,
         newPaid: newPaidScaled,
+        ...(dto.referenceNumber ? { referenceNumber: dto.referenceNumber } : {}),
       },
     });
 
     return { ...payment, amount: fromScaled(payment.amount) };
   }
 
+  async sendPickupReadySms(id: number): Promise<{ phone: string }> {
+    const txn = await this.findOne(id);
+
+    if (!txn.customerPhone) {
+      throw new BadRequestException('Customer has no phone number on file.');
+    }
+
+    const name = txn.customerName ?? 'Customer';
+    const pickupDate = txn.newPickupDate ?? txn.pickupDate;
+    const dateStr = pickupDate
+      ? new Date(pickupDate).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
+      : null;
+    const message = [
+      `Hi ${name}! Your shoe(s) are ready for pickup at Sneaker Doctor.`,
+      `Transaction #${txn.number}.`,
+      ...(dateStr ? [`Pickup Date: ${dateStr}.`] : []),
+      `See you soon!`,
+    ].join(' ');
+
+    await this.sms.send({ to: txn.customerPhone, message });
+
+    return { phone: txn.customerPhone };
+  }
+
   async remove(id: number, performedBy?: string) {
     const txn = await this.findOne(id);
 
-    await this.drizzle.db.delete(transactions).where(eq(transactions.id, id));
+    await this.drizzle.db
+      .update(transactions)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(eq(transactions.id, id));
 
     const branchId = performedBy
       ? await this.users.getBranchId(performedBy)
@@ -587,6 +756,43 @@ export class TransactionsService {
       source: 'admin',
       performedBy,
       branchId: branchId ?? undefined,
+    });
+  }
+
+  async findDeleted() {
+    const rows = await this.drizzle.db
+      .select()
+      .from(transactions)
+      .where(isNotNull(transactions.deletedAt))
+      .orderBy(desc(transactions.deletedAt));
+    return rows.map(mapTxn);
+  }
+
+  async restore(id: number, performedBy?: string) {
+    const [txn] = await this.drizzle.db
+      .select()
+      .from(transactions)
+      .where(and(eq(transactions.id, id), isNotNull(transactions.deletedAt)));
+    if (!txn) throw new NotFoundException(`Deleted transaction ${id} not found`);
+
+    await this.drizzle.db
+      .update(transactions)
+      .set({ deletedAt: null, updatedAt: new Date() })
+      .where(eq(transactions.id, id));
+
+    const branchId = performedBy
+      ? await this.users.getBranchId(performedBy)
+      : null;
+
+    await this.audit.log({
+      action: 'update',
+      auditType: AUDIT_TYPE.TRANSACTION_UPDATED,
+      entityType: 'transaction',
+      entityId: txn.number,
+      source: 'admin',
+      performedBy,
+      branchId: branchId ?? undefined,
+      details: { restored: true },
     });
   }
 }

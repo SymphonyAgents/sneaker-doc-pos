@@ -65,6 +65,7 @@ export class PromosService {
         dateFrom: dto.dateFrom ?? null,
         dateTo: dto.dateTo ?? null,
         isActive: dto.isActive ?? true,
+        createdById: performedBy ?? null,
       })
       .returning();
 
