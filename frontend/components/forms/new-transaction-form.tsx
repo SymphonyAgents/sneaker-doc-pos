@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { PlusIcon, ArrowLeftIcon, CurrencyDollarIcon, CameraIcon, XIcon } from '@phosphor-icons/react';
+import { PlusIcon, ArrowLeftIcon, CurrencyDollarIcon, CameraIcon } from '@phosphor-icons/react';
 import Link from 'next/link';
 import { transactionSchema, type TransactionFormData } from '@/schemas/transaction.schema';
 import { compressWithFallback } from '@/utils/photo';
