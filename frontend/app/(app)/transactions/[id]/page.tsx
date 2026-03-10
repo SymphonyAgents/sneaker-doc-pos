@@ -326,8 +326,8 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
               )}
               {txn.staffNickname && (
                 <div>
-                  <p className="text-xs text-zinc-400">Staff</p>
-                  <p className="text-sm text-zinc-700">{txn.staffNickname}</p>
+                  <p className="text-xs text-zinc-400">Assigned To</p>
+                  <p className="text-sm text-zinc-700">{toTitleCase(txn.staffNickname)}</p>
                 </div>
               )}
               {txn.newPickupDate && (
@@ -1010,10 +1010,12 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
         confirmLabel="Assign"
         confirmVariant="dark"
         onConfirm={() => {
-          updateTxnMut.mutate({ staffId: pendingStaffId === 'unassigned' ? null : pendingStaffId });
-          setPendingStaffId(null);
+          updateTxnMut.mutate(
+            { staffId: pendingStaffId === 'unassigned' ? null : pendingStaffId },
+            { onSuccess: () => setPendingStaffId(null), onError: () => setPendingStaffId(null) },
+          );
         }}
-        onCancel={() => setPendingStaffId(null)}
+        onCancel={() => { if (!updateTxnMut.isPending) setPendingStaffId(null); }}
         loading={updateTxnMut.isPending}
       />
     </div>
