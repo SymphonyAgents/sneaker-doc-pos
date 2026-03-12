@@ -32,6 +32,21 @@ export function useMonthlyExpensesQuery(year: number, month: number, options?: {
   });
 }
 
+export function useCreateExpenseMutation(date: string, onSuccess?: () => void) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { method?: string; category?: string; note?: string; amount: string }) =>
+      api.expenses.create({ ...body, date }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: expensesKey(date) });
+      qc.invalidateQueries({ queryKey: expensesSummaryKey(date) });
+      toast.success('Expense recorded');
+      onSuccess?.();
+    },
+    onError: (err: Error) => toast.error('Failed to record expense', { description: err.message }),
+  });
+}
+
 export function useUpdateExpenseMutation(date: string, onSuccess?: () => void) {
   const qc = useQueryClient();
   return useMutation({

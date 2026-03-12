@@ -13,6 +13,20 @@ export function usePromosQuery() {
   });
 }
 
+export function useCreatePromoMutation(onSuccess?: () => void) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { name: string; code: string; percent: string; dateFrom?: string; dateTo?: string }) =>
+      api.promos.create(body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PROMOS_KEY });
+      toast.success('Promo created');
+      onSuccess?.();
+    },
+    onError: (err: Error) => toast.error('Failed to create promo', { description: err.message }),
+  });
+}
+
 export function useUpdatePromoMutation(onSuccess?: () => void) {
   const qc = useQueryClient();
   return useMutation({
