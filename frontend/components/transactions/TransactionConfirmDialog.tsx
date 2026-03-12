@@ -101,18 +101,9 @@ export function TransactionConfirmDialog({
                 const addons = (item.addonServiceIds ?? [])
                   .map((id) => services.find((s) => s.id === parseInt(id, 10)))
                   .filter(Boolean) as Service[];
-                const photo = pendingPhotos[idx];
                 return (
-                  <div key={idx} className="bg-zinc-50 rounded-md p-2.5 flex gap-2.5">
-                    {photo && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={photo.previewUrl}
-                        alt="Before"
-                        className="w-10 h-10 rounded object-cover shrink-0 self-start"
-                      />
-                    )}
-                    <div className="flex-1 min-w-0">
+                  <div key={idx} className="bg-zinc-50 rounded-md p-2.5">
+                    <div className="min-w-0">
                       <p className="text-sm text-zinc-950 truncate mb-1.5">
                         {item.shoeDescription || `Item ${idx + 1}`}
                       </p>
