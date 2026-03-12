@@ -35,7 +35,7 @@ export default function BranchesPage() {
   const [newForm, setNewForm] = useState<NewForm>(EMPTY_FORM);
   const [deleteTarget, setDeleteTarget] = useState<Branch | null>(null);
 
-  const { data: branches = [], isLoading } = useBranchesQuery(false);
+  const { data: branches = [], isLoading } = useBranchesQuery(true);
 
   const createMut = useCreateBranchMutation(() => {
     setShowForm(false);

@@ -1,6 +1,5 @@
 'use client';
 
-import { CameraIcon } from '@phosphor-icons/react';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { formatDate, formatPeso } from '@/lib/utils';
 import type { Service, Promo, Customer } from '@/lib/types';
@@ -135,16 +134,6 @@ export function TransactionConfirmDialog({
               })}
             </div>
           </div>
-
-          {/* Photos note */}
-          {pendingPhotos.length > 0 && (
-            <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-md px-3 py-2">
-              <CameraIcon size={14} className="text-blue-500 shrink-0" />
-              <p className="text-xs text-blue-600">
-                {pendingPhotos.length} before photo{pendingPhotos.length > 1 ? 's' : ''} will be uploaded after creation
-              </p>
-            </div>
-          )}
 
           {/* Total */}
           <div className="flex justify-between items-center border border-emerald-500 rounded-md px-3 py-2.5">
