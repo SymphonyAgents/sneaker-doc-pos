@@ -9,11 +9,11 @@ import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Spinner } from '@/components/ui/spinner';
-import { ExpenseForm } from '@/components/forms/expense-form';
 import { createExpenseColumns, type ExpenseEditForm } from '@/columns/expenses-columns';
 import {
   useExpensesQuery,
   useExpensesSummaryQuery,
+  useCreateExpenseMutation,
   useUpdateExpenseMutation,
   useDeleteExpenseMutation,
 } from '@/hooks/useExpensesQuery';
@@ -33,45 +33,89 @@ const PAYMENT_METHODS = [
   { value: 'bank_deposit', label: 'Bank Deposit' },
 ] as const;
 
-const EMPTY_EDIT: ExpenseEditForm = { category: '', note: '', method: '', amount: '' };
+interface ExpenseForm {
+  category: string;
+  note: string;
+  method: string;
+  amount: string;
+}
+
+const EMPTY_FORM: ExpenseForm = { category: '', note: '', method: '', amount: '' };
+
+const INPUT_CLS = 'w-full px-3 py-2 text-sm border border-zinc-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500';
 
 export default function ExpensesPage() {
   const searchParams = useSearchParams();
   const [selectedDate, setSelectedDate] = useState(today());
-  const [showForm, setShowForm] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Expense | null>(null);
-  const [editForm, setEditForm] = useState<ExpenseEditForm>(EMPTY_EDIT);
-
-  useEffect(() => {
-    if (searchParams.get('new') === '1') setShowForm(true);
-  }, [searchParams]);
+  const [form, setForm] = useState<ExpenseForm>(EMPTY_FORM);
+  const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null);
 
   const { data: currentUser } = useCurrentUserQuery();
   const isAdmin = currentUser?.userType === 'admin' || currentUser?.userType === 'superadmin';
 
   const { data: expenses = [], isLoading } = useExpensesQuery(selectedDate);
   const { data: summary } = useExpensesSummaryQuery(selectedDate);
-  const updateMut = useUpdateExpenseMutation(selectedDate, () => setEditTarget(null));
-  const deleteMut = useDeleteExpenseMutation(selectedDate);
 
-  const startEdit = (e: Expense) => {
+  const closeDialog = () => setDialogOpen(false);
+  const createMut = useCreateExpenseMutation(selectedDate, closeDialog);
+  const updateMut = useUpdateExpenseMutation(selectedDate, closeDialog);
+  const deleteMut = useDeleteExpenseMutation(selectedDate);
+  const isBusy = createMut.isPending || updateMut.isPending;
+
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      setEditTarget(null);
+      setForm(EMPTY_FORM);
+      setDialogOpen(true);
+    }
+  }, [searchParams]);
+
+  const openCreate = () => {
+    setEditTarget(null);
+    setForm(EMPTY_FORM);
+    setDialogOpen(true);
+  };
+
+  const openEdit = (e: Expense) => {
     setEditTarget(e);
-    setEditForm({
+    setForm({
       category: e.category ?? '',
       note: e.note ?? '',
       method: e.method ?? '',
       amount: e.amount ?? '',
     });
-    setShowForm(false);
+    setDialogOpen(true);
+  };
+
+  const handleSave = () => {
+    if (!form.amount) return;
+    if (editTarget) {
+      updateMut.mutate({
+        id: editTarget.id,
+        category: form.category || undefined,
+        note: form.note || undefined,
+        method: form.method || undefined,
+        amount: form.amount || undefined,
+      });
+    } else {
+      createMut.mutate({
+        category: form.category || undefined,
+        note: form.note || undefined,
+        method: form.method || undefined,
+        amount: form.amount,
+      });
+    }
   };
 
   const columns = useMemo(
     () => createExpenseColumns({
       onDelete: setDeleteTarget,
-      onStartEdit: isAdmin ? startEdit : undefined,
+      onStartEdit: isAdmin ? openEdit : undefined,
       isAdmin,
     }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [isAdmin],
   );
 
@@ -81,7 +125,7 @@ export default function ExpensesPage() {
         title="Expenses"
         subtitle="Daily operational expenses"
         action={(
-          <Button onClick={() => setShowForm((v) => !v)}>
+          <Button onClick={openCreate}>
             <ReceiptIcon size={14} weight="bold" />
             Add Expense
           </Button>
@@ -103,14 +147,6 @@ export default function ExpensesPage() {
         )}
       </div>
 
-      {showForm && (
-        <ExpenseForm
-          dateKey={selectedDate}
-          onSuccess={() => setShowForm(false)}
-          onCancel={() => setShowForm(false)}
-        />
-      )}
-
       <DataTable
         columns={columns}
         data={expenses as Expense[]}
@@ -120,10 +156,10 @@ export default function ExpensesPage() {
         emptyDescription="No expenses recorded for this date."
       />
 
-      <Dialog open={!!editTarget} onOpenChange={(open) => { if (!open) setEditTarget(null); }}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open && !isBusy) closeDialog(); }}>
         <DialogContent className="bg-white sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-base">Edit Expense</DialogTitle>
+            <DialogTitle className="text-base">{editTarget ? 'Edit Expense' : 'New Expense'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-1">
             <div>
@@ -133,10 +169,10 @@ export default function ExpensesPage() {
                   <button
                     key={value}
                     type="button"
-                    onClick={() => setEditForm((f) => ({ ...f, method: f.method === value ? '' : value }))}
+                    onClick={() => setForm((f) => ({ ...f, method: f.method === value ? '' : value }))}
                     className={cn(
                       'px-3 py-1 rounded-full text-xs font-medium border transition-colors duration-150',
-                      editForm.method === value
+                      form.method === value
                         ? 'bg-zinc-950 text-white border-zinc-950'
                         : 'bg-white text-zinc-500 border-zinc-200 hover:border-zinc-400 hover:text-zinc-700',
                     )}
@@ -149,51 +185,46 @@ export default function ExpensesPage() {
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-zinc-700">Category</label>
               <input
-                value={editForm.category}
-                onChange={(e) => setEditForm((f) => ({ ...f, category: e.target.value }))}
+                value={form.category}
+                onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
                 placeholder="e.g. Supplies, Utilities"
-                className="w-full px-3 py-2 text-sm border border-zinc-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                className={INPUT_CLS}
               />
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-zinc-700">Note</label>
               <input
-                value={editForm.note}
-                onChange={(e) => setEditForm((f) => ({ ...f, note: e.target.value }))}
+                value={form.note}
+                onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
                 placeholder="Brief description"
-                className="w-full px-3 py-2 text-sm border border-zinc-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                className={INPUT_CLS}
               />
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-zinc-700">Amount (₱)</label>
               <input
+                autoFocus={!editTarget}
                 type="number"
                 min="0"
                 step="0.01"
-                value={editForm.amount}
-                onChange={(e) => setEditForm((f) => ({ ...f, amount: e.target.value }))}
-                className="w-full px-3 py-2 text-sm font-mono border border-zinc-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                value={form.amount}
+                onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
+                className={`${INPUT_CLS} font-mono`}
               />
             </div>
             <div className="flex gap-2 pt-1">
               <Button
                 size="sm"
                 className="flex-1"
-                disabled={updateMut.isPending || !editForm.amount}
-                onClick={() => {
-                  if (!editTarget) return;
-                  updateMut.mutate({
-                    id: editTarget.id,
-                    category: editForm.category || undefined,
-                    note: editForm.note || undefined,
-                    method: editForm.method || undefined,
-                    amount: editForm.amount || undefined,
-                  });
-                }}
+                disabled={isBusy || !form.amount}
+                onClick={handleSave}
               >
-                {updateMut.isPending ? <Spinner /> : 'Save'}
+                {isBusy ? <Spinner /> : 'Save'}
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => setEditTarget(null)}>Cancel</Button>
+              <Button size="sm" variant="ghost" disabled={isBusy} onClick={closeDialog}>
+                Cancel
+              </Button>
             </div>
           </div>
         </DialogContent>

@@ -8,51 +8,101 @@ import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Spinner } from '@/components/ui/spinner';
-import { PromoForm } from '@/components/forms/promo-form';
-import { createPromoColumns, type PromoEditForm } from '@/columns/promos-columns';
-import { usePromosQuery, useUpdatePromoMutation, useDeletePromoMutation } from '@/hooks/usePromosQuery';
+import { createPromoColumns } from '@/columns/promos-columns';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  usePromosQuery,
+  useCreatePromoMutation,
+  useUpdatePromoMutation,
+  useDeletePromoMutation,
+} from '@/hooks/usePromosQuery';
 import type { Promo } from '@/lib/types';
 
-const EMPTY_EDIT: PromoEditForm = { name: '', code: '', percent: '', dateFrom: '', dateTo: '' };
+interface PromoForm {
+  name: string;
+  code: string;
+  percent: string;
+  dateFrom: string;
+  dateTo: string;
+}
+
+const EMPTY_FORM: PromoForm = { name: '', code: '', percent: '', dateFrom: '', dateTo: '' };
+
+const INPUT_CLS = 'w-full px-3 py-2 text-sm border border-zinc-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500';
 
 export default function PromosPage() {
   const searchParams = useSearchParams();
-  const [showForm, setShowForm] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<Promo | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Promo | null>(null);
-  const [editForm, setEditForm] = useState<PromoEditForm>(EMPTY_EDIT);
-
-  useEffect(() => {
-    if (searchParams.get('new') === '1') setShowForm(true);
-  }, [searchParams]);
+  const [form, setForm] = useState<PromoForm>(EMPTY_FORM);
+  const [deleteTarget, setDeleteTarget] = useState<Promo | null>(null);
 
   const { data: promos = [], isLoading } = usePromosQuery();
-  const updateMut = useUpdatePromoMutation(() => setEditTarget(null));
-  const deleteMut = useDeletePromoMutation();
 
-  const startEdit = (p: Promo) => {
+  const closeDialog = () => setDialogOpen(false);
+  const createMut = useCreatePromoMutation(closeDialog);
+  const updateMut = useUpdatePromoMutation(closeDialog);
+  const deleteMut = useDeletePromoMutation();
+  const isBusy = createMut.isPending || updateMut.isPending;
+
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      setEditTarget(null);
+      setForm(EMPTY_FORM);
+      setDialogOpen(true);
+    }
+  }, [searchParams]);
+
+  const openCreate = () => {
+    setEditTarget(null);
+    setForm(EMPTY_FORM);
+    setDialogOpen(true);
+  };
+
+  const openEdit = (p: Promo) => {
     setEditTarget(p);
-    setEditForm({
+    setForm({
       name: p.name,
       code: p.code,
       percent: p.percent,
       dateFrom: p.dateFrom ?? '',
       dateTo: p.dateTo ?? '',
     });
-    setShowForm(false);
+    setDialogOpen(true);
+  };
+
+  const handleSave = () => {
+    if (!form.name.trim() || !form.code.trim() || !form.percent) return;
+    if (editTarget) {
+      updateMut.mutate({
+        id: editTarget.id,
+        name: form.name,
+        code: form.code,
+        percent: form.percent,
+        dateFrom: form.dateFrom || undefined,
+        dateTo: form.dateTo || undefined,
+      });
+    } else {
+      createMut.mutate({
+        name: form.name,
+        code: form.code,
+        percent: form.percent,
+        dateFrom: form.dateFrom || undefined,
+        dateTo: form.dateTo || undefined,
+      });
+    }
   };
 
   const columns = useMemo(
     () => createPromoColumns({
       onDelete: setDeleteTarget,
       onToggle: (id, isActive) => updateMut.mutate({ id, isActive }),
-      onStartEdit: startEdit,
+      onStartEdit: openEdit,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
@@ -64,19 +114,12 @@ export default function PromosPage() {
         title="Promos"
         subtitle="Promotional codes and discounts"
         action={
-          <Button onClick={() => setShowForm((v) => !v)}>
+          <Button onClick={openCreate}>
             <PlusIcon size={14} weight="bold" />
             Add Promo
           </Button>
         }
       />
-
-      {showForm && (
-        <PromoForm
-          onSuccess={() => setShowForm(false)}
-          onCancel={() => setShowForm(false)}
-        />
-      )}
 
       <DataTable
         columns={columns}
@@ -87,26 +130,27 @@ export default function PromosPage() {
         emptyDescription="Create your first promo code."
       />
 
-      <Dialog open={!!editTarget} onOpenChange={(open) => { if (!open) setEditTarget(null); }}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open && !isBusy) closeDialog(); }}>
         <DialogContent className="bg-white sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-base">Edit Promo</DialogTitle>
+            <DialogTitle className="text-base">{editTarget ? 'Edit Promo' : 'New Promo'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-1">
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-zinc-700">Promo Name</label>
               <input
-                value={editForm.name}
-                onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border border-zinc-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                autoFocus
+                value={form.name}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                className={INPUT_CLS}
               />
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-zinc-700">Code</label>
               <input
-                value={editForm.code}
-                onChange={(e) => setEditForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
-                className="w-full px-3 py-2 text-sm font-mono uppercase border border-zinc-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                value={form.code}
+                onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
+                className={`${INPUT_CLS} font-mono uppercase`}
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -116,9 +160,9 @@ export default function PromosPage() {
                 min="1"
                 max="100"
                 step="0.5"
-                value={editForm.percent}
-                onChange={(e) => setEditForm((f) => ({ ...f, percent: e.target.value }))}
-                className="w-full px-3 py-2 text-sm font-mono border border-zinc-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                value={form.percent}
+                onChange={(e) => setForm((f) => ({ ...f, percent: e.target.value }))}
+                className={`${INPUT_CLS} font-mono`}
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -126,18 +170,18 @@ export default function PromosPage() {
                 <label className="text-xs font-medium text-zinc-700">Valid From</label>
                 <input
                   type="date"
-                  value={editForm.dateFrom}
-                  onChange={(e) => setEditForm((f) => ({ ...f, dateFrom: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-zinc-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  value={form.dateFrom}
+                  onChange={(e) => setForm((f) => ({ ...f, dateFrom: e.target.value }))}
+                  className={INPUT_CLS}
                 />
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-medium text-zinc-700">Valid Until</label>
                 <input
                   type="date"
-                  value={editForm.dateTo}
-                  onChange={(e) => setEditForm((f) => ({ ...f, dateTo: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-zinc-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  value={form.dateTo}
+                  onChange={(e) => setForm((f) => ({ ...f, dateTo: e.target.value }))}
+                  className={INPUT_CLS}
                 />
               </div>
             </div>
@@ -145,22 +189,14 @@ export default function PromosPage() {
               <Button
                 size="sm"
                 className="flex-1"
-                disabled={updateMut.isPending || !editForm.name.trim() || !editForm.code.trim()}
-                onClick={() => {
-                  if (!editTarget) return;
-                  updateMut.mutate({
-                    id: editTarget.id,
-                    name: editForm.name,
-                    code: editForm.code,
-                    percent: editForm.percent,
-                    dateFrom: editForm.dateFrom || undefined,
-                    dateTo: editForm.dateTo || undefined,
-                  });
-                }}
+                disabled={isBusy || !form.name.trim() || !form.code.trim() || !form.percent}
+                onClick={handleSave}
               >
-                {updateMut.isPending ? <Spinner /> : 'Save'}
+                {isBusy ? <Spinner /> : 'Save'}
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => setEditTarget(null)}>Cancel</Button>
+              <Button size="sm" variant="ghost" disabled={isBusy} onClick={closeDialog}>
+                Cancel
+              </Button>
             </div>
           </div>
         </DialogContent>

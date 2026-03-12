@@ -12,6 +12,7 @@ import {
   useBranchesQuery,
   useCreateBranchMutation,
   useDeleteBranchMutation,
+  useUpdateBranchMutation,
 } from '@/hooks/useBranchesQuery';
 import { COUNTRY_DEFAULT } from '@/lib/ph-geo';
 import type { Branch } from '@/lib/types';
@@ -42,6 +43,7 @@ export default function BranchesPage() {
   });
 
   const deleteMut = useDeleteBranchMutation(() => setDeleteTarget(null));
+  const activateMut = useUpdateBranchMutation();
 
   function set(field: keyof NewForm, value: string) {
     setNewForm((f) => ({ ...f, [field]: value }));
@@ -67,7 +69,11 @@ export default function BranchesPage() {
   }
 
   const columns = useMemo(
-    () => createBranchesColumns({ onDelete: setDeleteTarget }),
+    () => createBranchesColumns({
+      onDelete: setDeleteTarget,
+      onActivate: (b) => activateMut.mutate({ id: b.id, isActive: true }),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
@@ -76,7 +82,7 @@ export default function BranchesPage() {
       <ConfirmDialog
         open={!!deleteTarget}
         title="Remove branch?"
-        description={`Remove "${deleteTarget?.name}"? It will be hidden from the system.`}
+        description={`Remove "${deleteTarget?.name}"? It will be hidden from the system. Branches with pending or in-progress transactions cannot be removed.`}
         confirmLabel="Remove"
         onConfirm={() => { if (deleteTarget) deleteMut.mutate(deleteTarget.id); }}
         onCancel={() => setDeleteTarget(null)}

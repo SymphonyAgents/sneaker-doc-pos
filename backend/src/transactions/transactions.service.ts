@@ -178,17 +178,13 @@ export class TransactionsService {
     // Fetch customer address if phone is available
     let customerAddress: {
       streetName: string | null;
-      barangay: string | null;
       city: string | null;
-      province: string | null;
     } | null = null;
     if (row.txn.customerPhone) {
       const [cust] = await this.drizzle.db
         .select({
           streetName: customers.streetName,
-          barangay: customers.barangay,
           city: customers.city,
-          province: customers.province,
         })
         .from(customers)
         .where(eq(customers.phone, row.txn.customerPhone))
@@ -202,9 +198,7 @@ export class TransactionsService {
       items,
       payments: payments.map((p) => ({ ...p, amount: fromScaled(p.amount) })),
       customerStreetName: customerAddress?.streetName ?? null,
-      customerBarangay: customerAddress?.barangay ?? null,
       customerCity: customerAddress?.city ?? null,
-      customerProvince: customerAddress?.province ?? null,
       staffNickname: row.staff?.nickname ?? null,
       staffId: row.txn.staffId ?? null,
       branchName: row.branch?.name ?? null,
@@ -292,9 +286,7 @@ export class TransactionsService {
           name: dto.customerName ?? null,
           email: dto.customerEmail ?? null,
           streetName: dto.customerStreetName ?? null,
-          barangay: dto.customerBarangay ?? null,
           city: dto.customerCity ?? null,
-          province: dto.customerProvince ?? null,
           country: dto.customerCountry ?? null,
           updatedAt: new Date(),
         })
@@ -304,9 +296,7 @@ export class TransactionsService {
             name: dto.customerName ?? null,
             email: dto.customerEmail ?? null,
             streetName: dto.customerStreetName ?? null,
-            barangay: dto.customerBarangay ?? null,
             city: dto.customerCity ?? null,
-            province: dto.customerProvince ?? null,
             country: dto.customerCountry ?? null,
             updatedAt: new Date(),
           },
@@ -433,7 +423,16 @@ export class TransactionsService {
     } else if ('staffId' in dto && dto.staffId !== existing.staffId) {
       auditType = AUDIT_TYPE.TRANSACTION_ASSIGNED;
       action = 'assign';
-      auditDetails = { from: existing.staffId ?? null, to: dto.staffId ?? null };
+      let assignedStaff: { fullName: string | null; email: string } | null = null;
+      if (dto.staffId) {
+        assignedStaff = await this.users.findById(dto.staffId) as { fullName: string | null; email: string } | null;
+      }
+      auditDetails = {
+        from: existing.staffId ?? null,
+        to: dto.staffId ?? null,
+        assignedFullName: assignedStaff?.fullName ?? null,
+        assignedEmail: assignedStaff?.email ?? null,
+      };
     }
 
     const branchId = performedBy
@@ -457,13 +456,32 @@ export class TransactionsService {
       dto.newPickupDate !== existing.newPickupDate &&
       updated.customerPhone
     ) {
+      const sender = performedBy ? await this.users.findById(performedBy) : null;
       this.sms.sendScheduleChangedSms({
         customerPhone: updated.customerPhone,
         customerName: updated.customerName,
         number: updated.number,
         newPickupDate: dto.newPickupDate,
+      }).then(() => {
+        return this.audit.log({
+          action: 'sms_sent',
+          auditType: AUDIT_TYPE.SMS_SENT,
+          entityType: 'transaction',
+          entityId: updated.number,
+          source: 'pos',
+          performedBy,
+          branchId: branchId ?? undefined,
+          details: {
+            sentAt: new Date().toISOString(),
+            smsType: 'schedule_changed',
+            customerPhone: updated.customerPhone,
+            txnNumber: updated.number,
+            sentById: performedBy ?? null,
+            sentByFullName: sender?.fullName ?? null,
+            sentByEmail: sender?.email ?? null,
+          },
+        });
       }).catch((err) => {
-        // Fire-and-forget — don't fail the update if SMS fails
         console.error('Failed to send reschedule SMS:', err);
       });
     }
@@ -728,8 +746,24 @@ export class TransactionsService {
       .returning();
 
     if (dto.status && dto.status !== existing.status) {
+      // Guard: last claimable item cannot be claimed if there's an outstanding balance
+      if (dto.status === 'claimed') {
+        const otherClaimable = (txn.items ?? []).filter(
+          (i) => i.id !== itemId && i.status !== 'claimed' && i.status !== 'cancelled',
+        );
+        if (otherClaimable.length === 0 && txn.total > txn.paid) {
+          throw new BadRequestException('Balance must be fully settled before the last item can be claimed.');
+        }
+      }
+
       const branchId = performedBy
         ? await this.users.getBranchId(performedBy)
+        : null;
+
+      const remainingAfterClaim = dto.status === 'claimed'
+        ? (txn.items ?? []).filter(
+            (i) => i.id !== itemId && i.status !== 'claimed' && i.status !== 'cancelled',
+          ).length
         : null;
 
       await this.audit.log({
@@ -747,6 +781,9 @@ export class TransactionsService {
           shoe: existing.shoeDescription,
           ...(dto.status === 'cancelled' && existing.price !== null
             ? { refundedAmount: fromScaled(existing.price) }
+            : {}),
+          ...(dto.status === 'claimed' && remainingAfterClaim !== null
+            ? { isPartialClaim: remainingAfterClaim > 0, remainingItems: remainingAfterClaim }
             : {}),
         },
       });
@@ -821,7 +858,7 @@ export class TransactionsService {
     return { ...payment, amount: fromScaled(payment.amount) };
   }
 
-  async sendPickupReadySms(id: number): Promise<{ phone: string }> {
+  async sendPickupReadySms(id: number, performedBy?: string): Promise<{ phone: string }> {
     const txn = await this.findOne(id);
 
     if (!txn.customerPhone) {
@@ -833,14 +870,54 @@ export class TransactionsService {
     const dateStr = pickupDate
       ? new Date(pickupDate).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
       : null;
+
+    const allItems = txn.items ?? [];
+    const doneItems = allItems.filter((i) => i.status === 'done');
+    const totalActive = allItems.filter((i) => i.status !== 'cancelled').length;
+    const itemListStr = doneItems.length > 0
+      ? doneItems.map((i) => {
+          const shoe = i.shoeDescription ?? 'Item';
+          const svc = i.service?.name ? ` (${i.service.name})` : '';
+          return `${shoe}${svc}`;
+        }).join(', ')
+      : null;
+
+    const isPartial = doneItems.length > 0 && doneItems.length < totalActive;
+    const readyLine = isPartial
+      ? `${doneItems.length} of your item(s) are ready for pickup.`
+      : `Your shoe(s) are ready for pickup at Sneaker Doctor.`;
+
     const message = [
-      `Hi ${name}! Your shoe(s) are ready for pickup at Sneaker Doctor.`,
+      `Hi ${name}! ${readyLine}`,
       `Transaction #${txn.number}.`,
+      ...(itemListStr ? [`Ready: ${itemListStr}.`] : []),
       ...(dateStr ? [`Pickup Date: ${dateStr}.`] : []),
       `See you soon!`,
     ].join(' ');
 
     await this.sms.send({ to: txn.customerPhone, message });
+
+    const sentAt = new Date().toISOString();
+    const sender = performedBy ? await this.users.findById(performedBy) : null;
+    const branchId = performedBy ? await this.users.getBranchId(performedBy) : null;
+
+    await this.audit.log({
+      action: 'sms_sent',
+      auditType: AUDIT_TYPE.SMS_SENT,
+      entityType: 'transaction',
+      entityId: txn.number,
+      source: 'pos',
+      performedBy,
+      branchId: branchId ?? undefined,
+      details: {
+        sentAt,
+        customerPhone: txn.customerPhone,
+        txnNumber: txn.number,
+        sentById: performedBy ?? null,
+        sentByFullName: sender?.fullName ?? null,
+        sentByEmail: sender?.email ?? null,
+      },
+    });
 
     return { phone: txn.customerPhone };
   }

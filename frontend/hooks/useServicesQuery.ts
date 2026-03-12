@@ -18,6 +18,20 @@ export function useServicesQuery() {
   });
 }
 
+export function useCreateServiceMutation(onSuccess?: () => void) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (form: { name: string; type: 'primary' | 'add_on'; price: string }) =>
+      api.services.create(form),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: SERVICES_KEY });
+      toast.success('Service created');
+      onSuccess?.();
+    },
+    onError: (err: Error) => toast.error('Failed to create service', { description: err.message }),
+  });
+}
+
 export function useUpdateServiceMutation(onSuccess?: () => void) {
   const qc = useQueryClient();
   return useMutation({
