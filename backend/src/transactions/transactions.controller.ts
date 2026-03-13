@@ -131,6 +131,24 @@ export class TransactionsController {
   }
 
   @UseGuards(SupabaseAuthGuard)
+  @Get('collections/history')
+  async collectionsHistory(
+    @Req() req: AuthedRequest,
+    @Query('year') year: string,
+    @Query('month') month: string,
+    @Query('method') method: string,
+    @Query('branchId') branchId?: string,
+  ) {
+    const branch = await this.scopedBranchId(req.user.id, branchId);
+    return this.transactionsService.collectionsHistory(
+      parseInt(year, 10),
+      parseInt(month, 10),
+      method,
+      branch,
+    );
+  }
+
+  @UseGuards(SupabaseAuthGuard)
   @Get('collections/summary')
   async collectionsSummary(
     @Req() req: AuthedRequest,

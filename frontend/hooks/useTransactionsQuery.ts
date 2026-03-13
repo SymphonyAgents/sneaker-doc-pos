@@ -182,6 +182,19 @@ export function useCollectionsSummaryQuery(
   });
 }
 
+export function useCollectionsHistoryQuery(
+  year: number,
+  month: number,
+  method: string,
+  options?: { branchId?: number; enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: ['collections-history', year, month, method, options?.branchId],
+    queryFn: () => api.transactions.collectionsHistory(year, month, method, options?.branchId),
+    enabled: (options?.enabled ?? true) && !!method,
+  });
+}
+
 export function useTodayCollectionsQuery() {
   return useQuery({
     queryKey: ['today-collections'],

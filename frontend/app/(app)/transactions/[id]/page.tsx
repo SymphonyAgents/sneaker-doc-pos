@@ -753,7 +753,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {assignableUsers.map((u) => (
+                  {assignableUsers.filter((u) => u.id !== currentUser?.id).map((u) => (
                     <SelectItem key={u.id} value={u.id}>
                       {u.nickname || u.fullName ? toTitleCase(u.nickname ?? u.fullName ?? '') : u.email}
                     </SelectItem>

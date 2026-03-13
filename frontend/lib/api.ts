@@ -77,6 +77,11 @@ export const api = {
       if (branchId) qs.set('branchId', String(branchId));
       return apiFetch<Record<string, string>>(`/transactions/collections/summary?${qs}`);
     },
+    collectionsHistory: (year: number, month: number, method: string, branchId?: number) => {
+      const qs = new URLSearchParams({ year: String(year), month: String(month), method });
+      if (branchId) qs.set('branchId', String(branchId));
+      return apiFetch<{ id: number; transactionId: number; method: string; amount: string; paidAt: string; txnNumber: string; customerName: string | null }[]>(`/transactions/collections/history?${qs}`);
+    },
     get: (id: number) => apiFetch<Transaction>(`/transactions/${id}`),
     getByNumber: (number: string) => apiFetch<Transaction>(`/transactions/number/${number}`),
     create: (body: Partial<Omit<Transaction, 'items'>> & { items?: Record<string, unknown>[]; isExistingCustomer?: boolean; customerStreetName?: string; customerCity?: string; customerCountry?: string }) =>

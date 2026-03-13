@@ -28,6 +28,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { DepositHistoryDialog } from '@/components/deposits/DepositHistoryDialog';
+import { CollectionHistoryDialog } from '@/components/deposits/CollectionHistoryDialog';
 import { QrScanDialog } from '@/components/ui/qr-scan-dialog';
 import { formatPeso, formatDate, PAYMENT_METHOD_LABELS } from '@/lib/utils';
 import {
@@ -124,6 +125,7 @@ export default function DashboardPage() {
   const [branchFilter, setBranchFilter] = useState<string>('all');
   const [showQrScanner, setShowQrScanner] = useState(false);
   const [historyDialog, setHistoryDialog] = useState<{ open: boolean; method?: string }>({ open: false });
+  const [collectionHistoryDialog, setCollectionHistoryDialog] = useState<{ open: boolean; method: string; methodLabel: string } | null>(null);
   const [depositDialog, setDepositDialog] = useState<string | null>(null);
   const [depositAmount, setDepositAmount] = useState('');
   const [depositError, setDepositError] = useState('');
@@ -328,8 +330,14 @@ export default function DashboardPage() {
                 return (
                   <button
                     key={key}
-                    onClick={() => isBankDeposit ? setHistoryDialog({ open: true, method: key }) : undefined}
-                    className={`group flex-1 px-5 py-4 text-left transition-colors duration-150 ${isBankDeposit ? 'hover:bg-zinc-50/60 cursor-pointer' : 'cursor-default'}`}
+                    onClick={() => {
+                      if (isBankDeposit) {
+                        setHistoryDialog({ open: true, method: key });
+                      } else {
+                        setCollectionHistoryDialog({ open: true, method: key, methodLabel: config.label });
+                      }
+                    }}
+                    className="group flex-1 px-5 py-4 text-left transition-colors duration-150 hover:bg-zinc-50/60 cursor-pointer"
                   >
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-1.5">
@@ -509,6 +517,20 @@ export default function DashboardPage() {
         monthLabel={month === 0 ? `${year} Overall` : `${MONTHS[(month || 1) - 1]} ${year}`}
         branchId={branchId}
       />
+
+      {/* Collection history dialog — Cash / GCash / Card */}
+      {collectionHistoryDialog && (
+        <CollectionHistoryDialog
+          open={collectionHistoryDialog.open}
+          onClose={() => setCollectionHistoryDialog(null)}
+          year={year}
+          month={month}
+          monthLabel={month === 0 ? `${year} Overall` : `${MONTHS[(month || 1) - 1]} ${year}`}
+          method={collectionHistoryDialog.method}
+          methodLabel={collectionHistoryDialog.methodLabel}
+          branchId={branchId}
+        />
+      )}
 
       {/* Add deposit dialog */}
       <Dialog

@@ -27,6 +27,7 @@ import { TransactionItemCard, type PendingPhoto } from '@/components/transaction
 import { TransactionConfirmDialog } from '@/components/transactions/TransactionConfirmDialog';
 import { ClaimStubDialog } from '@/components/transactions/ClaimStubDialog';
 import { useAssignableUsersQuery } from '@/hooks/useUsersQuery';
+import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
 import type { Service, Promo, Customer, Transaction } from '@/lib/types';
 import { calcItemPrice, calcRawTotal, findPromo, applyPromo } from '@/utils/pricing';
 import { PAYMENT_METHOD_LABELS, cn } from '@/lib/utils';
@@ -105,7 +106,9 @@ export function NewTransactionForm() {
   const watchedPaymentAmount = useWatch({ control, name: 'paymentAmount' }) ?? '';
   const watchedStaffId = useWatch({ control, name: 'staffId' }) ?? '';
 
+  const { data: currentUser } = useCurrentUserQuery();
   const { data: assignableUsers = [] } = useAssignableUsersQuery();
+  const otherAssignableUsers = assignableUsers.filter((u) => u.id !== currentUser?.id);
 
   const [sameServiceToAll, setSameServiceToAll] = useState(false);
   const [customerStep, setCustomerStep] = useState<'phone' | 'details'>('phone');
@@ -545,7 +548,7 @@ export function NewTransactionForm() {
               </div>
             </div>
 
-            {assignableUsers.length > 0 && (
+            {otherAssignableUsers.length > 0 && (
               <div className="bg-white border border-zinc-200 rounded-lg p-5">
                 <h2 className="text-sm font-semibold text-zinc-950 mb-3">Assign To</h2>
                 <Select
@@ -557,7 +560,7 @@ export function NewTransactionForm() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Self (default)</SelectItem>
-                    {assignableUsers.map((u) => (
+                    {otherAssignableUsers.map((u) => (
                       <SelectItem key={u.id} value={u.id}>
                         {u.nickname || u.fullName ? toTitleCase(u.nickname ?? u.fullName ?? '') : u.email}
                       </SelectItem>

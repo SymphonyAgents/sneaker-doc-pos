@@ -641,6 +641,37 @@ export class TransactionsService {
     };
   }
 
+  async collectionsHistory(year: number, month: number, method: string, branchId?: number) {
+    const from = new Date(`${year}-${String(month).padStart(2, '0')}-01T00:00:00`);
+    const lastDay = new Date(year, month, 0).getDate();
+    const to = new Date(`${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}T23:59:59`);
+
+    const conditions: ReturnType<typeof eq>[] = [
+      eq(claimPayments.method, method) as ReturnType<typeof eq>,
+      gte(claimPayments.paidAt, from),
+      lte(claimPayments.paidAt, to),
+      isNull(transactions.deletedAt) as ReturnType<typeof eq>,
+      ne(transactions.status, 'cancelled') as ReturnType<typeof eq>,
+    ];
+    if (branchId) conditions.push(eq(transactions.branchId, branchId) as ReturnType<typeof eq>);
+
+    const rows = await this.drizzle.db
+      .select({
+        id: claimPayments.id,
+        transactionId: claimPayments.transactionId,
+        method: claimPayments.method,
+        amount: claimPayments.amount,
+        paidAt: claimPayments.paidAt,
+        txnNumber: transactions.number,
+        customerName: transactions.customerName,
+      })
+      .from(claimPayments)
+      .innerJoin(transactions, eq(claimPayments.transactionId, transactions.id))
+      .where(and(...conditions))
+      .orderBy(desc(claimPayments.paidAt));
+    return rows.map((r) => ({ ...r, amount: fromScaled(r.amount) }));
+  }
+
   async todayCollections(branchId?: number) {
     const today = new Date().toISOString().split('T')[0];
     const conditions: ReturnType<typeof eq>[] = [
