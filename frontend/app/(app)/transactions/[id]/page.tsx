@@ -865,20 +865,24 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                 <button
                   type="button"
                   className="flex items-center justify-center gap-2 w-full px-3 py-2 text-sm font-medium bg-zinc-200 text-zinc-800 rounded-md hover:bg-zinc-300 transition-colors duration-150"
-                  onClick={async () => {
+                  onClick={() => {
                     if (emailTemplate === EMAIL_TEMPLATES.claim_stub) {
                       const link = generateGmailLinkNoBody(txn, EMAIL_TEMPLATES.claim_stub);
-                      try {
-                        if (!stubRef.current) throw new Error('ref missing');
-                        const dataUrl = await toPng(stubRef.current, { pixelRatio: 2 });
-                        const res = await fetch(dataUrl);
-                        const blob = await res.blob();
-                        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-                        toast.success('Stub image copied', { description: 'Paste into the Gmail compose body' });
-                      } catch {
-                        // fallback silently
-                      }
+                      // Open Gmail synchronously to avoid mobile popup blocker,
+                      // then attempt clipboard copy in the background
                       window.open(link, '_blank');
+                      (async () => {
+                        try {
+                          if (!stubRef.current) return;
+                          const dataUrl = await toPng(stubRef.current, { pixelRatio: 2 });
+                          const res = await fetch(dataUrl);
+                          const blob = await res.blob();
+                          await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+                          toast.success('Stub image copied', { description: 'Paste into the Gmail compose body' });
+                        } catch {
+                          // clipboard image copy not supported on this device
+                        }
+                      })();
                     } else {
                       window.open(generateGmailLink(txn, emailTemplate), '_blank');
                     }
