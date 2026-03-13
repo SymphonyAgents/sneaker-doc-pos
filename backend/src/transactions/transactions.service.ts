@@ -70,15 +70,14 @@ export class TransactionsService {
     private readonly sms: SmsService,
   ) {}
 
-  // Generate next zero-padded transaction number using a DB sequence-safe query
+  // Generate next zero-padded transaction number using advisory lock to prevent race conditions.
+  // pg_advisory_xact_lock(1) serialises concurrent callers within the current transaction.
   private async nextNumber(): Promise<string> {
-    const [result] = await this.drizzle.db
-      .select({
-        max: sql<string>`COALESCE(MAX(CAST(${transactions.number} AS INTEGER)), 0)`,
-      })
-      .from(transactions);
-    const next = parseInt(result?.max ?? '0', 10) + 1;
-    return String(next).padStart(4, '0');
+    const [result] = await this.drizzle.db.execute(
+      sql`SELECT pg_advisory_xact_lock(1), COALESCE(MAX(CAST(${transactions.number} AS INTEGER)), 0) AS max FROM ${transactions}`,
+    );
+    const max = Number((result as Record<string, unknown>)?.max ?? 0);
+    return String(max + 1).padStart(4, '0');
   }
 
   async findAll(params: FindAllParams = {}) {
@@ -957,7 +956,7 @@ export class TransactionsService {
 
     await this.audit.log({
       action: 'delete',
-      auditType: AUDIT_TYPE.TRANSACTION_CANCELLED,
+      auditType: AUDIT_TYPE.TRANSACTION_DELETED,
       entityType: 'transaction',
       entityId: txn.number,
       source: 'admin',
@@ -979,11 +978,18 @@ export class TransactionsService {
     return rows.map(mapTxn);
   }
 
-  async restore(id: number, performedBy?: string) {
+  async restore(id: number, performedBy?: string, scopedBranch?: number) {
+    const conditions: ReturnType<typeof eq>[] = [
+      eq(transactions.id, id),
+      isNotNull(transactions.deletedAt) as ReturnType<typeof eq>,
+    ];
+    if (scopedBranch !== undefined) {
+      conditions.push(eq(transactions.branchId, scopedBranch));
+    }
     const [txn] = await this.drizzle.db
       .select()
       .from(transactions)
-      .where(and(eq(transactions.id, id), isNotNull(transactions.deletedAt)));
+      .where(and(...conditions));
     if (!txn) throw new NotFoundException(`Deleted transaction ${id} not found`);
 
     const [restored] = await this.drizzle.db
