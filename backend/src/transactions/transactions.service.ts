@@ -607,7 +607,7 @@ export class TransactionsService {
     // gives us the net adjustment per channel.
     const depositConditions: ReturnType<typeof eq>[] = [
       eq(deposits.year, year),
-      (branchId ? eq(deposits.branchId, branchId) : isNull(deposits.branchId)) as ReturnType<typeof eq>,
+      ...(branchId ? [eq(deposits.branchId, branchId)] : []),
       ...(month !== 0 ? [eq(deposits.month, month)] : []),
     ];
     const depositRows = await this.drizzle.db
