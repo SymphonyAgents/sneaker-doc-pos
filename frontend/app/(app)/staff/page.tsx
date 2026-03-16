@@ -4,10 +4,11 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { LockSimpleIcon } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/ui/page-header';
 import { DataTable } from '@/components/ui/data-table';
 import { createUserColumns } from '@/columns/users-columns';
-import { useUsersQuery, useUpdateUserRoleMutation, useUpdateUserBranchMutation, useDeleteUserMutation } from '@/hooks/useUsersQuery';
+import { useUsersQuery, useUpdateUserRoleMutation, useUpdateUserBranchMutation, useDeleteUserMutation, useApproveUserMutation, useRejectUserMutation } from '@/hooks/useUsersQuery';
 import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
 import { useBranchesQuery } from '@/hooks/useBranchesQuery';
 import { toTitleCase } from '@/utils/text';
@@ -15,6 +16,8 @@ import { UserRoleConfirmDialog, type PendingRoleChange } from '@/components/user
 import { UserBranchConfirmDialog, type PendingBranchChange } from '@/components/users/UserBranchConfirmDialog';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import type { AppUser, Branch } from '@/lib/types';
+
+type Tab = 'approved' | 'pending';
 
 export default function StaffPage() {
   const router = useRouter();
@@ -26,10 +29,15 @@ export default function StaffPage() {
   const updateRoleMut = useUpdateUserRoleMutation();
   const updateBranchMut = useUpdateUserBranchMutation();
   const deleteMut = useDeleteUserMutation(() => setDeleteTarget(null));
+  const approveMut = useApproveUserMutation(() => setApproveTarget(null));
+  const rejectMut = useRejectUserMutation(() => setRejectTarget(null));
 
+  const [tab, setTab] = useState<Tab>('approved');
   const [pendingRoleChange, setPendingRoleChange] = useState<PendingRoleChange | null>(null);
   const [pendingBranchChange, setPendingBranchChange] = useState<PendingBranchChange | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null);
+  const [approveTarget, setApproveTarget] = useState<AppUser | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<AppUser | null>(null);
 
   const isSuperadmin = currentUser?.userType === 'superadmin';
 
@@ -44,6 +52,8 @@ export default function StaffPage() {
           }
         : undefined,
       onDelete: isSuperadmin ? setDeleteTarget : undefined,
+      onApprove: isSuperadmin ? setApproveTarget : undefined,
+      onReject: isSuperadmin ? setRejectTarget : undefined,
       currentUserId: currentUser?.id,
       isSuperadmin,
       branches: branches as Branch[],
@@ -51,13 +61,15 @@ export default function StaffPage() {
     [currentUser?.id, isSuperadmin, branches],
   );
 
-  const grouped = useMemo(() => {
-    const allUsers = (users as AppUser[]);
+  const { pendingUsers, grouped } = useMemo(() => {
+    const allUsers = users as AppUser[];
+    const pending = allUsers.filter((u) => u.status === 'pending');
+    const active = allUsers.filter((u) => u.status !== 'pending');
     const branchMap = new Map(branches.map((b) => [b.id, b.name]));
 
     const groups = new Map<string, { label: string; users: AppUser[] }>();
 
-    for (const user of allUsers) {
+    for (const user of active) {
       const key = user.branchId !== null ? String(user.branchId) : '__none__';
       if (!groups.has(key)) {
         const label = user.branchId !== null
@@ -68,13 +80,15 @@ export default function StaffPage() {
       groups.get(key)!.users.push(user);
     }
 
-    return [...groups.entries()]
+    const sorted = [...groups.entries()]
       .sort(([a], [b]) => {
         if (a === '__none__') return 1;
         if (b === '__none__') return -1;
         return (groups.get(a)!.label).localeCompare(groups.get(b)!.label);
       })
       .map(([, group]) => group);
+
+    return { pendingUsers: pending, grouped: sorted };
   }, [users, branches]);
 
   if (userLoaded && !isAdmin) {
@@ -101,6 +115,24 @@ export default function StaffPage() {
         onConfirm={() => { if (deleteTarget) deleteMut.mutate(deleteTarget.id); }}
         onCancel={() => setDeleteTarget(null)}
         loading={deleteMut.isPending}
+      />
+      <ConfirmDialog
+        open={!!approveTarget}
+        title="Approve user?"
+        description={`Approve ${approveTarget?.email}? They will be able to sign in and access the system.`}
+        confirmLabel="Approve"
+        onConfirm={() => { if (approveTarget) approveMut.mutate(approveTarget.id); }}
+        onCancel={() => setApproveTarget(null)}
+        loading={approveMut.isPending}
+      />
+      <ConfirmDialog
+        open={!!rejectTarget}
+        title="Reject user?"
+        description={`Reject ${rejectTarget?.email}? They will not be able to access the system.`}
+        confirmLabel="Reject"
+        onConfirm={() => { if (rejectTarget) rejectMut.mutate(rejectTarget.id); }}
+        onCancel={() => setRejectTarget(null)}
+        loading={rejectMut.isPending}
       />
       <UserRoleConfirmDialog
         open={pendingRoleChange !== null}
@@ -133,38 +165,111 @@ export default function StaffPage() {
           title="Staff"
           subtitle="Manage team roles and access"
         />
-        {isLoading ? (
-          <DataTable
-            columns={columns}
-            data={[]}
-            isLoading
-            loadingRows={4}
-            emptyTitle="No staff found"
-            emptyDescription="Staff appear here once they sign in."
-          />
-        ) : grouped.length === 0 ? (
-          <p className="text-sm text-zinc-400">No staff found.</p>
-        ) : (
-          <div className="space-y-8">
-            {grouped.map((group) => (
-              <div key={group.label}>
-                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400 mb-3">
-                  {group.label}
-                  <span className="ml-2 font-normal normal-case tracking-normal text-zinc-300">
-                    {group.users.length} {group.users.length === 1 ? 'member' : 'members'}
-                  </span>
-                </p>
-                <DataTable
-                  columns={columns}
-                  data={group.users}
-                  isLoading={false}
-                  emptyTitle="No staff"
-                  emptyDescription=""
-                  onRowClick={(user) => router.push(`/staff/${user.id}`)}
-                />
+
+        {/* Tabs */}
+        <div className="flex gap-1 border-b border-zinc-200 mb-6">
+          <button
+            onClick={() => setTab('approved')}
+            className={cn(
+              'px-4 py-2.5 text-sm font-medium transition-colors relative',
+              tab === 'approved'
+                ? 'text-zinc-950'
+                : 'text-zinc-400 hover:text-zinc-600',
+            )}
+          >
+            Approved
+            {tab === 'approved' && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-zinc-950 rounded-t" />
+            )}
+          </button>
+          <button
+            onClick={() => setTab('pending')}
+            className={cn(
+              'px-4 py-2.5 text-sm font-medium transition-colors relative',
+              tab === 'pending'
+                ? 'text-zinc-950'
+                : 'text-zinc-400 hover:text-zinc-600',
+            )}
+          >
+            <span className="flex items-center gap-1.5">
+              Pending
+              {pendingUsers.length > 0 && (
+                <span className="w-2 h-2 rounded-full bg-red-500" />
+              )}
+            </span>
+            {tab === 'pending' && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-zinc-950 rounded-t" />
+            )}
+          </button>
+        </div>
+
+        {/* Approved tab */}
+        {tab === 'approved' && (
+          <>
+            {isLoading ? (
+              <DataTable
+                columns={columns}
+                data={[]}
+                isLoading
+                loadingRows={4}
+                emptyTitle="No staff found"
+                emptyDescription="Staff appear here once they sign in."
+              />
+            ) : grouped.length === 0 ? (
+              <p className="text-sm text-zinc-400">No approved staff found.</p>
+            ) : (
+              <div className="space-y-8">
+                {grouped.map((group) => (
+                  <div key={group.label}>
+                    <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400 mb-3">
+                      {group.label}
+                      <span className="ml-2 font-normal normal-case tracking-normal text-zinc-300">
+                        {group.users.length} {group.users.length === 1 ? 'member' : 'members'}
+                      </span>
+                    </p>
+                    <DataTable
+                      columns={columns}
+                      data={group.users}
+                      isLoading={false}
+                      emptyTitle="No staff"
+                      emptyDescription=""
+                      onRowClick={(user) => router.push(`/staff/${user.id}`)}
+                    />
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            )}
+          </>
+        )}
+
+        {/* Pending tab */}
+        {tab === 'pending' && (
+          <>
+            {isLoading ? (
+              <DataTable
+                columns={columns}
+                data={[]}
+                isLoading
+                loadingRows={3}
+                emptyTitle="No pending staff"
+                emptyDescription=""
+              />
+            ) : pendingUsers.length === 0 ? (
+              <div className="text-center py-16">
+                <p className="text-sm text-zinc-400">No pending approval requests.</p>
+                <p className="text-xs text-zinc-300 mt-1">New signups will appear here for review.</p>
+              </div>
+            ) : (
+              <DataTable
+                columns={columns}
+                data={pendingUsers}
+                isLoading={false}
+                emptyTitle="No pending staff"
+                emptyDescription=""
+                onRowClick={(user) => router.push(`/staff/${user.id}`)}
+              />
+            )}
+          </>
         )}
       </div>
     </>
