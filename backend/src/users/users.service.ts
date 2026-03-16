@@ -115,16 +115,14 @@ export class UsersService {
   async reject(id: string, performedBy?: string) {
     const user = await this.findById(id);
     if (!user) throw new NotFoundException('User not found');
-    if (user.status === 'rejected') throw new BadRequestException('User is already rejected');
 
-    const [updated] = await this.drizzle.db
-      .update(users)
-      .set({ status: 'rejected' })
-      .where(eq(users.id, id))
-      .returning();
+    // Hard-delete the user row
+    await this.drizzle.db
+      .delete(users)
+      .where(eq(users.id, id));
 
     await this.audit.log({
-      action: `Rejected user: ${user.email}`,
+      action: `Rejected and deleted user: ${user.email}`,
       auditType: AUDIT_TYPE.USER_REJECTED,
       entityType: 'user',
       entityId: id,
@@ -134,7 +132,7 @@ export class UsersService {
       details: { email: user.email },
     });
 
-    return updated;
+    return { deleted: true };
   }
 
   // Returns active users for transaction assignment dropdowns
