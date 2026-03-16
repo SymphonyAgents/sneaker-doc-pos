@@ -1,8 +1,10 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { LockSimpleIcon } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/ui/page-header';
 import { DataTable } from '@/components/ui/data-table';
 import { createUserColumns } from '@/columns/users-columns';
@@ -17,7 +19,12 @@ import { StaffDocumentsDialog } from '@/components/users/StaffDocumentsDialog';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import type { AppUser, Branch } from '@/lib/types';
 
+type Tab = 'approved' | 'pending';
+
 export default function UsersPage() {
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get('tab') === 'pending' ? 'pending' : 'approved';
+
   const { data: currentUser, isSuccess: userLoaded } = useCurrentUserQuery();
   const isAdmin = currentUser?.userType === 'admin' || currentUser?.userType === 'superadmin';
 
@@ -29,6 +36,7 @@ export default function UsersPage() {
   const approveMut = useApproveUserMutation(() => setApproveTarget(null));
   const rejectMut = useRejectUserMutation(() => setRejectTarget(null));
 
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [pendingRoleChange, setPendingRoleChange] = useState<PendingRoleChange | null>(null);
   const [pendingBranchChange, setPendingBranchChange] = useState<PendingBranchChange | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null);
@@ -81,7 +89,6 @@ export default function UsersPage() {
       groups.get(key)!.users.push(user);
     }
 
-    // Sort: named branches first (alphabetically), unassigned last
     const sorted = [...groups.entries()]
       .sort(([a], [b]) => {
         if (a === '__none__') return 1;
@@ -149,9 +156,9 @@ export default function UsersPage() {
         }}
         onCancel={() => setPendingRoleChange(null)}
       />
-        <EditStaffDialog user={editTarget} onClose={() => setEditTarget(null)} />
+      <EditStaffDialog user={editTarget} onClose={() => setEditTarget(null)} />
       <StaffDocumentsDialog user={docsTarget} onClose={() => setDocsTarget(null)} />
-    <UserBranchConfirmDialog
+      <UserBranchConfirmDialog
         open={pendingBranchChange !== null}
         pendingChange={pendingBranchChange}
         loading={updateBranchMut.isPending}
@@ -164,64 +171,116 @@ export default function UsersPage() {
         }}
         onCancel={() => setPendingBranchChange(null)}
       />
-    <div>
-      <PageHeader
-        title="Users"
-        subtitle="Manage team roles and access"
-      />
-
-      {/* Pending approvals section */}
-      {pendingUsers.length > 0 && (
-        <div className="mb-8">
-          <p className="text-xs font-semibold uppercase tracking-widest text-amber-500 mb-3">
-            Pending Approval
-            <span className="ml-2 font-normal normal-case tracking-normal text-amber-400">
-              {pendingUsers.length} {pendingUsers.length === 1 ? 'user' : 'users'}
-            </span>
-          </p>
-          <DataTable
-            columns={columns}
-            data={pendingUsers}
-            isLoading={false}
-            emptyTitle="No pending users"
-            emptyDescription=""
-          />
-        </div>
-      )}
-
-      {isLoading ? (
-        <DataTable
-          columns={columns}
-          data={[]}
-          isLoading
-          loadingRows={4}
-          emptyTitle="No users found"
-          emptyDescription="Users appear here once they sign in."
+      <div>
+        <PageHeader
+          title="Users"
+          subtitle="Manage team roles and access"
         />
-      ) : grouped.length === 0 && pendingUsers.length === 0 ? (
-        <p className="text-sm text-zinc-400">No users found.</p>
-      ) : (
-        <div className="space-y-8">
-          {grouped.map((group) => (
-            <div key={group.label}>
-              <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400 mb-3">
-                {group.label}
-                <span className="ml-2 font-normal normal-case tracking-normal text-zinc-300">
-                  {group.users.length} {group.users.length === 1 ? 'user' : 'users'}
-                </span>
-              </p>
+
+        {/* Tabs */}
+        <div className="flex gap-1 border-b border-zinc-200 mb-6">
+          <button
+            onClick={() => setTab('approved')}
+            className={cn(
+              'px-4 py-2.5 text-sm font-medium transition-colors relative',
+              tab === 'approved'
+                ? 'text-zinc-950'
+                : 'text-zinc-400 hover:text-zinc-600',
+            )}
+          >
+            Approved
+            {tab === 'approved' && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-zinc-950 rounded-t" />
+            )}
+          </button>
+          <button
+            onClick={() => setTab('pending')}
+            className={cn(
+              'px-4 py-2.5 text-sm font-medium transition-colors relative',
+              tab === 'pending'
+                ? 'text-zinc-950'
+                : 'text-zinc-400 hover:text-zinc-600',
+            )}
+          >
+            <span className="flex items-center gap-1.5">
+              Pending
+              {pendingUsers.length > 0 && (
+                <span className="w-2 h-2 rounded-full bg-red-500" />
+              )}
+            </span>
+            {tab === 'pending' && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-zinc-950 rounded-t" />
+            )}
+          </button>
+        </div>
+
+        {/* Approved tab */}
+        {tab === 'approved' && (
+          <>
+            {isLoading ? (
               <DataTable
                 columns={columns}
-                data={group.users}
-                isLoading={false}
-                emptyTitle="No users"
+                data={[]}
+                isLoading
+                loadingRows={4}
+                emptyTitle="No users found"
+                emptyDescription="Users appear here once they sign in."
+              />
+            ) : grouped.length === 0 ? (
+              <p className="text-sm text-zinc-400">No approved users found.</p>
+            ) : (
+              <div className="space-y-8">
+                {grouped.map((group) => (
+                  <div key={group.label}>
+                    <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400 mb-3">
+                      {group.label}
+                      <span className="ml-2 font-normal normal-case tracking-normal text-zinc-300">
+                        {group.users.length} {group.users.length === 1 ? 'user' : 'users'}
+                      </span>
+                    </p>
+                    <DataTable
+                      columns={columns}
+                      data={group.users}
+                      isLoading={false}
+                      emptyTitle="No users"
+                      emptyDescription=""
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Pending tab */}
+        {tab === 'pending' && (
+          <>
+            {isLoading ? (
+              <DataTable
+                columns={columns}
+                data={[]}
+                isLoading
+                loadingRows={3}
+                emptyTitle="No pending users"
                 emptyDescription=""
               />
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+            ) : pendingUsers.length === 0 ? (
+              <div className="text-center py-16">
+                <p className="text-sm text-zinc-400">No pending approval requests.</p>
+                <p className="text-xs text-zinc-300 mt-1">New signups will appear here for review.</p>
+              </div>
+            ) : (
+              <DataTable
+                columns={columns}
+                data={pendingUsers}
+                isLoading={false}
+                emptyTitle="No pending users"
+                emptyDescription=""
+              />
+            )}
+          </>
+        )}
+      </div>
     </>
   );
 }

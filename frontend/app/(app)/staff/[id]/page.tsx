@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeftIcon,
@@ -10,6 +10,8 @@ import {
   ArrowSquareOutIcon,
   UploadSimpleIcon,
   CameraIcon,
+  CheckCircleIcon,
+  XCircleIcon,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { cn, formatDatetime } from '@/lib/utils';
@@ -24,7 +26,10 @@ import {
   useStaffDocumentsQuery,
   useAddDocumentMutation,
   useDeleteDocumentMutation,
+  useApproveUserMutation,
+  useRejectUserMutation,
 } from '@/hooks/useUsersQuery';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
 import { ROUTES } from '@/lib/routes';
 import type { AppUser } from '@/lib/types';
@@ -56,10 +61,12 @@ function initials(user: AppUser) {
 
 export default function StaffProfilePage() {
   const params = useParams();
+  const router = useRouter();
   const userId = params.id as string;
 
   const { data: currentUser } = useCurrentUserQuery();
   const isAdmin = currentUser?.userType === 'admin' || currentUser?.userType === 'superadmin';
+  const isSuperadmin = currentUser?.userType === 'superadmin';
   const isSelf = currentUser?.id === userId;
   const canUpload = isAdmin || isSelf;
 
@@ -69,6 +76,11 @@ export default function StaffProfilePage() {
   const updateMut = useUpdateUserProfileMutation();
   const addDocMut = useAddDocumentMutation(userId);
   const deleteDocMut = useDeleteDocumentMutation(userId);
+  const approveMut = useApproveUserMutation(() => { setApproveOpen(false); router.push('/users?tab=pending'); });
+  const rejectMut = useRejectUserMutation(() => { setRejectOpen(false); router.push('/users?tab=pending'); });
+
+  const [approveOpen, setApproveOpen] = useState(false);
+  const [rejectOpen, setRejectOpen] = useState(false);
 
   const [section, setSection] = useState<Section>('profile');
 
@@ -247,8 +259,30 @@ export default function StaffProfilePage() {
     );
   }
 
+  const isPendingUser = user?.status === 'pending';
+
   return (
     <div>
+      {/* Approve / Reject confirm dialogs */}
+      <ConfirmDialog
+        open={approveOpen}
+        title="Approve user?"
+        description={`Approve ${user?.email ?? 'this user'}? They will be able to sign in and access the system.`}
+        confirmLabel="Approve"
+        onConfirm={() => approveMut.mutate(userId)}
+        onCancel={() => setApproveOpen(false)}
+        loading={approveMut.isPending}
+      />
+      <ConfirmDialog
+        open={rejectOpen}
+        title="Reject user?"
+        description={`Reject ${user?.email ?? 'this user'}? They will not be able to access the system.`}
+        confirmLabel="Reject"
+        onConfirm={() => rejectMut.mutate(userId)}
+        onCancel={() => setRejectOpen(false)}
+        loading={rejectMut.isPending}
+      />
+
       {/* Hidden file input */}
       <input
         ref={fileRef}
@@ -359,6 +393,32 @@ export default function StaffProfilePage() {
           {user.userType}
         </span>
       </div>
+
+      {/* Pending approval action strip */}
+      {isPendingUser && isSuperadmin && (
+        <div className="mb-6 flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+          <div className="flex-1">
+            <p className="text-sm font-medium text-amber-800">This user is pending approval</p>
+            <p className="text-xs text-amber-600 mt-0.5">Approve or reject their access to the system.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setApproveOpen(true)}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-emerald-500 hover:bg-emerald-600 rounded-lg transition-colors"
+            >
+              <CheckCircleIcon size={20} weight="bold" />
+              Approve
+            </button>
+            <button
+              onClick={() => setRejectOpen(true)}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors"
+            >
+              <XCircleIcon size={20} weight="bold" />
+              Reject
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-col lg:flex-row gap-8">
         {/* Nav — horizontal tabs on mobile, vertical list on desktop */}

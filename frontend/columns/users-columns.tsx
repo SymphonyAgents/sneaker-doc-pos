@@ -21,11 +21,6 @@ const ROLE_STYLES: Record<string, string> = {
   superadmin: 'bg-violet-50 text-violet-700',
 };
 
-const STATUS_STYLES: Record<string, string> = {
-  pending: 'bg-amber-50 text-amber-600',
-  rejected: 'bg-red-50 text-red-600',
-};
-
 function RoleBadge({ role }: { role: string }) {
   return (
     <span className={cn(
@@ -33,18 +28,6 @@ function RoleBadge({ role }: { role: string }) {
       ROLE_STYLES[role] ?? 'bg-zinc-100 text-zinc-600',
     )}>
       {role}
-    </span>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  if (status === 'active') return null;
-  return (
-    <span className={cn(
-      'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium uppercase tracking-wide',
-      STATUS_STYLES[status] ?? 'bg-zinc-100 text-zinc-600',
-    )}>
-      {status}
     </span>
   );
 }
@@ -81,12 +64,7 @@ export const createUserColumns = ({
       const u = row.original;
       const name = u.fullName ?? u.nickname ?? null;
       const primary = name ? toTitleCase(name) : u.email;
-      return (
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-zinc-950">{primary}</span>
-          <StatusBadge status={u.status} />
-        </div>
-      );
+      return <span className="text-sm text-zinc-950">{primary}</span>;
     },
   },
   {
@@ -179,29 +157,28 @@ export const createUserColumns = ({
       const isSelf = user.id === currentUserId;
       const isPending = user.status === 'pending';
       return (
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex items-center justify-end gap-3">
+          {/* Pending users: large, obvious approve/reject icons */}
           {isPending && isSuperadmin && onApprove && (
-            <Button
-              size="sm"
-              variant="secondary"
-              className="text-emerald-600 hover:text-emerald-700"
+            <button
               onClick={(e) => { e.stopPropagation(); onApprove(user); }}
+              className="p-1.5 text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors"
+              title="Approve"
             >
-              <CheckCircleIcon size={13} weight="bold" />
-              Approve
-            </Button>
+              <CheckCircleIcon size={22} weight="fill" />
+            </button>
           )}
           {isPending && isSuperadmin && onReject && (
-            <Button
-              size="sm"
-              variant="secondary"
-              className="text-red-500 hover:text-red-600"
+            <button
               onClick={(e) => { e.stopPropagation(); onReject(user); }}
+              className="p-1.5 text-red-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
+              title="Reject"
             >
-              <XCircleIcon size={13} weight="bold" />
-              Reject
-            </Button>
+              <XCircleIcon size={22} weight="fill" />
+            </button>
           )}
+
+          {/* Active users: existing actions */}
           {!isPending && onEdit && (
             <Button
               size="sm"
