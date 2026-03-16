@@ -1128,7 +1128,6 @@ export class TransactionsService {
       'Need Help?',
       'Mon-Fri: 0962 990 3989',
       'Sat-Sun: Facebook Chat',
-      name,
     ];
     const message = lines.join('\n');
 
