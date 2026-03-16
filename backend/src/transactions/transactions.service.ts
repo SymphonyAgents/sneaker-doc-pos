@@ -278,7 +278,7 @@ export class TransactionsService {
       );
     }
 
-    if (dto.customerPhone && !dto.isExistingCustomer) {
+    if (dto.customerPhone) {
       await this.drizzle.db
         .insert(customers)
         .values({
@@ -301,6 +301,26 @@ export class TransactionsService {
             updatedAt: new Date(),
           },
         });
+
+      await this.audit.log({
+        action: dto.isExistingCustomer ? 'update' : 'create',
+        auditType: AUDIT_TYPE.CUSTOMER_UPSERTED,
+        entityType: 'customer',
+        entityId: dto.customerPhone,
+        source,
+        performedBy,
+        branchId: branchId ?? undefined,
+        details: {
+          txnNumber: created.number,
+          phone: dto.customerPhone,
+          name: dto.customerName ?? null,
+          email: dto.customerEmail ?? null,
+          streetName: dto.customerStreetName ?? null,
+          city: dto.customerCity ?? null,
+          country: dto.customerCountry ?? null,
+          isExistingCustomer: dto.isExistingCustomer ?? false,
+        },
+      });
     }
 
     await this.audit.log({
