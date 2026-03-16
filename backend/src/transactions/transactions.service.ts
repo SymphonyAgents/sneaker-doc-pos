@@ -1123,11 +1123,11 @@ export class TransactionsService {
     const name = txn.customerName ?? 'Customer';
 
     const lines = [
-      `Good day! Your shoe(s) for Transaction #${txn.number} are ready for pickup. Unclaimed after 5 days: ₱100/week.`,
+      `Your shoe(s) for Txn #${txn.number} are ready for pickup. Unclaimed after 5 days: Php100/week.`,
       '',
-      'Need Help?',
+      'Help:',
       'Mon-Fri: 0962 990 3989',
-      'Sat-Sun: Facebook Chat',
+      'Sat-Sun: FB Chat',
     ];
     const message = lines.join('\n');
 
