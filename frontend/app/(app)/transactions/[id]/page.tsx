@@ -748,13 +748,13 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                     {paymentMethod === 'card' && (
                       <div className="flex flex-col gap-1.5">
                         <label className="text-xs font-medium text-zinc-700">Card Bank</label>
-                        <Select value={paymentCardBank} onValueChange={setPaymentCardBank}>
+                        <Select value={paymentCardBank || '__default__'} onValueChange={(v) => setPaymentCardBank(v === '__default__' ? '' : v)}>
                           <SelectTrigger className="h-9 text-sm w-full border-zinc-200">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
                             {CARD_BANK_OPTIONS.map((opt) => (
-                              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                              <SelectItem key={opt.value || '__default__'} value={opt.value || '__default__'}>{opt.label}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
@@ -1259,15 +1259,15 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                             <div className="flex flex-col gap-1">
                               <label className="text-xs font-medium text-zinc-700">Card Bank</label>
                               <Select
-                                value={pay.cardBank}
-                                onValueChange={(v) => setEditDraftPayments((prev) => prev.map((x) => x.id === pay.id ? { ...x, cardBank: v } : x))}
+                                value={pay.cardBank || '__default__'}
+                                onValueChange={(v) => setEditDraftPayments((prev) => prev.map((x) => x.id === pay.id ? { ...x, cardBank: v === '__default__' ? '' : v } : x))}
                               >
                                 <SelectTrigger className="h-9 text-sm border-zinc-200">
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
                                   {CARD_BANK_OPTIONS.map((o) => (
-                                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                                    <SelectItem key={o.value || '__default__'} value={o.value || '__default__'}>{o.label}</SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
