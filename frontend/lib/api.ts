@@ -80,7 +80,7 @@ export const api = {
     collectionsHistory: (year: number, month: number, method: string, branchId?: number) => {
       const qs = new URLSearchParams({ year: String(year), month: String(month), method });
       if (branchId) qs.set('branchId', String(branchId));
-      return apiFetch<{ id: number; transactionId: number; method: string; amount: string; paidAt: string; txnNumber: string; customerName: string | null }[]>(`/transactions/collections/history?${qs}`);
+      return apiFetch<{ id: number; transactionId: number; method: string; amount: string; fee: string; net: string; feePercent: string; paidAt: string; txnNumber: string; customerName: string | null }[]>(`/transactions/collections/history?${qs}`);
     },
     get: (id: number) => apiFetch<Transaction>(`/transactions/${id}`),
     getByNumber: (number: string) => apiFetch<Transaction>(`/transactions/number/${number}`),

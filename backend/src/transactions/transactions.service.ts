@@ -747,6 +747,8 @@ export class TransactionsService {
         transactionId: claimPayments.transactionId,
         method: claimPayments.method,
         amount: claimPayments.amount,
+        fee: claimPayments.fee,
+        feePercent: claimPayments.feePercent,
         paidAt: claimPayments.paidAt,
         txnNumber: transactions.number,
         customerName: transactions.customerName,
@@ -755,7 +757,12 @@ export class TransactionsService {
       .innerJoin(transactions, eq(claimPayments.transactionId, transactions.id))
       .where(and(...conditions))
       .orderBy(desc(claimPayments.paidAt));
-    return rows.map((r) => ({ ...r, amount: fromScaled(r.amount) }));
+    return rows.map((r) => ({
+      ...r,
+      amount: fromScaled(r.amount),
+      fee: fromScaled(Number(r.fee ?? 0)),
+      net: fromScaled(r.amount - Number(r.fee ?? 0)),
+    }));
   }
 
   async todayCollections(branchId?: number) {
@@ -1181,6 +1188,11 @@ export class TransactionsService {
       ? await this.users.getBranchId(performedBy)
       : null;
 
+    // Auto-create card fee expense
+    if (isCard && fee > 0) {
+      await this.createCardFeeExpense(payment.id, fee, feePercent, txn.number, txn.branchId);
+    }
+
     await this.audit.log({
       action: 'payment_add',
       auditType: AUDIT_TYPE.PAYMENT_ADDED,
@@ -1285,6 +1297,13 @@ export class TransactionsService {
 
     const branchId = performedBy ? await this.users.getBranchId(performedBy) : null;
     const bankDepositInvolved = existing.method === 'bank_deposit' || dto.method === 'bank_deposit';
+
+    // Manage auto card fee expense on method change
+    const wasCard = existing.method === 'card';
+    if (wasCard) await this.voidCardFeeExpense(paymentId);
+    if (isNewCard && newFee > 0) {
+      await this.createCardFeeExpense(paymentId, newFee, newFeePercent, txn.number, txn.branchId);
+    }
 
     await this.audit.log({
       action: 'update',
@@ -1416,6 +1435,13 @@ export class TransactionsService {
             feePercent: isCard ? String(feePercent) : '0',
           })
           .where(eq(claimPayments.id, payDto.id));
+
+        // Manage auto card fee expense on method change
+        const wasCard = existing.method === 'card';
+        if (wasCard) await this.voidCardFeeExpense(payDto.id);
+        if (isCard && fee > 0) {
+          await this.createCardFeeExpense(payDto.id, fee, feePercent, txn.number, txn.branchId);
+        }
       }
     }
 
@@ -1605,6 +1631,50 @@ export class TransactionsService {
   // Child rows (items, payments, photos) cascade-delete via FK constraints
   // ---------------------------------------------------------------------------
   private readonly logger = new Logger(TransactionsService.name);
+
+  // ── Card fee auto-expense helpers ──────────────────────────────────────────
+
+  /**
+   * Creates a system expense for a card processing fee, linked to the payment.
+   * Called after a card payment is inserted. Safe to call multiple times — each
+   * creates a new record, so callers must void the old one before re-creating.
+   */
+  private async createCardFeeExpense(
+    paymentId: number,
+    feeScaled: number,
+    feePercent: string,
+    txnNumber: string,
+    branchId?: number | null,
+  ) {
+    if (feeScaled <= 0) return;
+    const today = new Date().toISOString().split('T')[0];
+    await this.drizzle.db.insert(expenses).values({
+      dateKey: today,
+      category: 'Card Processing Fee',
+      note: `${feePercent}% card fee — Txn #${txnNumber}`,
+      method: 'card',
+      source: 'system',
+      amount: feeScaled,
+      paymentId,
+      branchId: branchId ?? null,
+    });
+  }
+
+  /**
+   * Soft-deletes the auto-generated card fee expense tied to a payment.
+   * Called when a card payment's method changes away from card.
+   */
+  private async voidCardFeeExpense(paymentId: number) {
+    await this.drizzle.db
+      .update(expenses)
+      .set({ deletedAt: new Date() })
+      .where(
+        and(
+          eq(expenses.paymentId, paymentId),
+          isNull(expenses.deletedAt) as ReturnType<typeof eq>,
+        ),
+      );
+  }
 
   async purgeOldDeleted() {
     const cutoff = new Date();

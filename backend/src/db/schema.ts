@@ -147,10 +147,13 @@ export const expenses = pgTable('expenses', {
   category: varchar('category', { length: 100 }),
   note: varchar('note', { length: 500 }),
   method: varchar('method', { length: 50 }), // cash | gcash | card | bank_deposit
-  source: varchar('source', { length: 20 }).default('pos').notNull(), // pos | admin
+  source: varchar('source', { length: 20 }).default('pos').notNull(), // pos | admin | system
   amount: bigint('amount', { mode: 'number' }).notNull(),
-  staffId: uuid('staff_id').references(() => users.id, { onDelete: 'set null' }), // null = admin expense
+  staffId: uuid('staff_id').references(() => users.id, { onDelete: 'set null' }), // null = admin/system expense
   photoUrl: varchar('photo_url', { length: 1000 }), // optional receipt photo
+  // auto card-fee expense linkage
+  paymentId: integer('payment_id').references(() => claimPayments.id, { onDelete: 'set null' }),
+  branchId: integer('branch_id').references(() => branches.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true })
     .defaultNow()
     .notNull(),

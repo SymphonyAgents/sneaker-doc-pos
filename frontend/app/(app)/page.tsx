@@ -394,9 +394,16 @@ export default function DashboardPage() {
                     {dashboardLoading ? (
                       <div className="h-5 w-16 bg-zinc-200 rounded animate-pulse" />
                     ) : (
-                      <p className={`font-mono text-lg font-semibold ${amount > 0 ? 'text-zinc-950' : 'text-zinc-300'}`}>
-                        {formatPeso(amount)}
-                      </p>
+                      <>
+                        <p className={`font-mono text-lg font-semibold ${amount > 0 ? 'text-zinc-950' : 'text-zinc-300'}`}>
+                          {formatPeso(amount)}
+                        </p>
+                        {key === 'card' && parseFloat(collections?.['cardFee'] ?? '0') > 0 && (
+                          <p className="text-[11px] font-mono text-red-400 mt-0.5">
+                            fee -{formatPeso(collections?.['cardFee'] ?? '0')}
+                          </p>
+                        )}
+                      </>
                     )}
                   </button>
                 );
