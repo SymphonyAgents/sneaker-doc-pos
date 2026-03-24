@@ -1440,7 +1440,7 @@ export class TransactionsService {
         const wasCard = existing.method === 'card';
         if (wasCard) await this.voidCardFeeExpense(payDto.id);
         if (isCard && fee > 0) {
-          await this.createCardFeeExpense(payDto.id, fee, feePercent, txn.number, txn.branchId);
+          await this.createCardFeeExpense(payDto.id, fee, String(feePercent), txn.number, txn.branchId);
         }
       }
     }
