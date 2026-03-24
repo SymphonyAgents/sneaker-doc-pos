@@ -1239,40 +1239,42 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                           <p className="text-[11px] font-medium text-zinc-400">
                             {PAYMENT_METHOD_LABELS[original?.method ?? pay.method] ?? pay.method} · {formatPeso(original?.amount ?? '0')}
                           </p>
-                          <div className="flex flex-col gap-1">
-                            <label className="text-xs font-medium text-zinc-700">Method</label>
-                            <Select
-                              value={pay.method}
-                              onValueChange={(v) => setEditDraftPayments((prev) => prev.map((x) => x.id === pay.id ? { ...x, method: v, cardBank: v !== 'card' ? '' : x.cardBank } : x))}
-                            >
-                              <SelectTrigger className="h-9 text-sm border-zinc-200">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {(['cash', 'gcash', 'card'] as const).map((m) => (
-                                  <SelectItem key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          {pay.method === 'card' && (
-                            <div className="flex flex-col gap-1">
-                              <label className="text-xs font-medium text-zinc-700">Card Bank</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className={cn('flex flex-col gap-1', pay.method !== 'card' && 'col-span-2')}>
+                              <label className="text-xs font-medium text-zinc-700">Method</label>
                               <Select
-                                value={pay.cardBank || '__default__'}
-                                onValueChange={(v) => setEditDraftPayments((prev) => prev.map((x) => x.id === pay.id ? { ...x, cardBank: v === '__default__' ? '' : v } : x))}
+                                value={pay.method}
+                                onValueChange={(v) => setEditDraftPayments((prev) => prev.map((x) => x.id === pay.id ? { ...x, method: v, cardBank: v !== 'card' ? '' : x.cardBank } : x))}
                               >
                                 <SelectTrigger className="h-9 text-sm border-zinc-200">
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {CARD_BANK_OPTIONS.map((o) => (
-                                    <SelectItem key={o.value || '__default__'} value={o.value || '__default__'}>{o.label}</SelectItem>
+                                  {(['cash', 'gcash', 'card'] as const).map((m) => (
+                                    <SelectItem key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
                             </div>
-                          )}
+                            {pay.method === 'card' && (
+                              <div className="flex flex-col gap-1">
+                                <label className="text-xs font-medium text-zinc-700">Card Bank</label>
+                                <Select
+                                  value={pay.cardBank || '__default__'}
+                                  onValueChange={(v) => setEditDraftPayments((prev) => prev.map((x) => x.id === pay.id ? { ...x, cardBank: v === '__default__' ? '' : v } : x))}
+                                >
+                                  <SelectTrigger className="h-9 text-sm border-zinc-200">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {CARD_BANK_OPTIONS.map((o) => (
+                                      <SelectItem key={o.value || '__default__'} value={o.value || '__default__'}>{o.label}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            )}
+                          </div>
                           <div className="flex flex-col gap-1">
                             <label className="text-xs font-medium text-zinc-700">Reference No. (optional)</label>
                             <input
