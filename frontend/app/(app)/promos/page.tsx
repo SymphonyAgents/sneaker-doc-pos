@@ -47,8 +47,12 @@ export default function PromosPage() {
   const [deleteTarget, setDeleteTarget] = useState<Promo | null>(null);
   const [pendingToggle, setPendingToggle] = useState<Promo | null>(null);
   const origFormRef = useRef<PromoForm | null>(null);
+  const promosRef = useRef<Promo[]>([]);
 
   const { data: promos = [], isLoading } = usePromosQuery();
+
+  // Keep ref in sync so the stale-closed columns callbacks always see current promos
+  useEffect(() => { promosRef.current = promos; }, [promos]);
 
   const closeDialog = () => setDialogOpen(false);
   const createMut = useCreatePromoMutation(closeDialog);
@@ -118,7 +122,7 @@ export default function PromosPage() {
       onToggle: (id, isActive) => {
         if (!isActive) {
           // Deactivating — require confirmation
-          const promo = promos?.find((p) => p.id === id) ?? null;
+          const promo = promosRef.current?.find((p) => p.id === id) ?? null;
           setPendingToggle(promo);
         } else {
           updateMut.mutate({ id, isActive: true });
