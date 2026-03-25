@@ -584,12 +584,25 @@ export class TransactionsService {
     const plus3 = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)
       .toISOString()
       .split('T')[0];
+
+    // Pre-aggregate non-cancelled item counts to avoid correlated subquery issues
+    const itemCountsSubq = this.drizzle.db
+      .select({
+        txnId: transactionItems.transactionId,
+        count: sql<number>`CAST(COUNT(*) AS INT)`,
+      })
+      .from(transactionItems)
+      .where(ne(transactionItems.status, 'cancelled'))
+      .groupBy(transactionItems.transactionId)
+      .as('item_counts');
+
     const rows = await this.drizzle.db
       .select({
         ...getTableColumns(transactions),
-        itemCount: sql<number>`CAST((SELECT COUNT(*) FROM transaction_items WHERE transaction_id = ${transactions.id} AND status != 'cancelled') AS INT)`,
+        itemCount: sql<number>`COALESCE(${itemCountsSubq.count}, 0)`,
       })
       .from(transactions)
+      .leftJoin(itemCountsSubq, eq(itemCountsSubq.txnId, transactions.id))
       .where(
         and(
           isNull(transactions.deletedAt),
@@ -619,12 +632,25 @@ export class TransactionsService {
     const from = `${year}-${String(month).padStart(2, '0')}-01`;
     const lastDay = new Date(year, month, 0).getDate();
     const to = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    // Pre-aggregate non-cancelled item counts to avoid correlated subquery issues
+    const itemCountsSubq = this.drizzle.db
+      .select({
+        txnId: transactionItems.transactionId,
+        count: sql<number>`CAST(COUNT(*) AS INT)`,
+      })
+      .from(transactionItems)
+      .where(ne(transactionItems.status, 'cancelled'))
+      .groupBy(transactionItems.transactionId)
+      .as('item_counts');
+
     const rows = await this.drizzle.db
       .select({
         ...getTableColumns(transactions),
-        itemCount: sql<number>`CAST((SELECT COUNT(*) FROM transaction_items WHERE transaction_id = ${transactions.id} AND status != 'cancelled') AS INT)`,
+        itemCount: sql<number>`COALESCE(${itemCountsSubq.count}, 0)`,
       })
       .from(transactions)
+      .leftJoin(itemCountsSubq, eq(itemCountsSubq.txnId, transactions.id))
       .where(
         and(
           isNull(transactions.deletedAt),
