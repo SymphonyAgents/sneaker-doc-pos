@@ -44,7 +44,8 @@ import { useAssignableUsersQuery } from '@/hooks/useUsersQuery';
 import { usePromosQuery } from '@/hooks/usePromosQuery';
 import { useServicesQuery } from '@/hooks/useServicesQuery';
 import type { Service } from '@/lib/types';
-import { PAYMENT_METHOD_VALUES, TRANSACTION_STATUS, CARD_BANK_OPTIONS, getCardFeeRatePreview } from '@/lib/constants';
+import { PAYMENT_METHOD_VALUES, TRANSACTION_STATUS, buildCardBankOptions, getCardFeeRatePreview } from '@/lib/constants';
+import { useCardBanksQuery } from '@/hooks/useCardBanksQuery';
 import { toPng } from 'html-to-image';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
@@ -96,6 +97,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const [editTxnOpen, setEditTxnOpen] = useState(false);
   const [editDraftItems, setEditDraftItems] = useState<EditItemDraft[]>([]);
   const [editDraftPayments, setEditDraftPayments] = useState<EditPaymentDraft[]>([]);
+  const editInitializedRef = useRef(false);
 
   const { data: currentUser } = useCurrentUserQuery();
   const isAdmin = currentUser?.userType === 'admin' || currentUser?.userType === 'superadmin';
@@ -103,6 +105,8 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const { data: assignableUsers = [] } = useAssignableUsersQuery();
   const { data: activePromos = [] } = usePromosQuery();
   const { data: allServices = [] } = useServicesQuery();
+  const { data: cardBanksData = [] } = useCardBanksQuery();
+  const cardBankOptions = buildCardBankOptions(cardBanksData);
   const [promoEditing, setPromoEditing] = useState(false);
   const [promoSelected, setPromoSelected] = useState('none');
 
@@ -135,6 +139,28 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [txn?.id]);
+
+  // Fallback: populate edit drafts when detail data arrives after modal is already open.
+  // This handles the initialData race: list cache lacks items/payments; the real detail
+  // fetch resolves async. Without this, first-open shows empty modal until close+reopen.
+  useEffect(() => {
+    if (!editTxnOpen) { editInitializedRef.current = false; return; }
+    if (editInitializedRef.current || !txn?.items) return;
+    editInitializedRef.current = true;
+    const nonCancelledItems = txn.items.filter((i) => i.status !== 'cancelled');
+    setEditDraftItems(nonCancelledItems.map((i) => ({
+      id: i.id,
+      shoeDescription: i.shoeDescription ?? '',
+      serviceId: i.service ? String(i.service.id) : '',
+    })));
+    setEditDraftPayments((txn.payments ?? []).map((p) => ({
+      id: p.id,
+      method: p.method,
+      referenceNumber: p.referenceNumber ?? '',
+      cardBank: p.cardBank ?? '',
+    })));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editTxnOpen, txn?.items, txn?.payments]);
 
   const handleUploadClick = useCallback((itemId: number, type: 'before' | 'after') => {
     pendingUploadRef.current = { itemId, type };
@@ -753,7 +779,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {CARD_BANK_OPTIONS.map((opt) => (
+                            {cardBankOptions.map((opt) => (
                               <SelectItem key={opt.value || '__default__'} value={opt.value || '__default__'}>{opt.label}</SelectItem>
                             ))}
                           </SelectContent>
@@ -777,7 +803,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                       />
                       {/* Card fee preview — display only, authoritative value computed server-side */}
                       {paymentMethod === 'card' && paymentAmount && parseFloat(paymentAmount) > 0 && (() => {
-                        const rate = getCardFeeRatePreview(paymentCardBank);
+                        const rate = getCardFeeRatePreview(paymentCardBank, cardBanksData);
                         const feeAmt = parseFloat(paymentAmount) * rate;
                         const netAmt = parseFloat(paymentAmount) - feeAmt;
                         return (
@@ -1267,7 +1293,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {CARD_BANK_OPTIONS.map((o) => (
+                                    {cardBankOptions.map((o) => (
                                       <SelectItem key={o.value || '__default__'} value={o.value || '__default__'}>{o.label}</SelectItem>
                                     ))}
                                   </SelectContent>

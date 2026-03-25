@@ -16,6 +16,7 @@ import { BranchesModule } from './branches/branches.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { DepositsModule } from './deposits/deposits.module';
 import { ReportsModule } from './reports/reports.module';
+import { CardBanksModule } from './card-banks/card-banks.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { ReportsModule } from './reports/reports.module';
     UploadsModule,
     DepositsModule,
     ReportsModule,
+    CardBanksModule,
   ],
 })
 export class AppModule {}

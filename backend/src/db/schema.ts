@@ -15,6 +15,17 @@ import {
 import { relations } from 'drizzle-orm';
 
 // ---------------------------------------------------------------------------
+// card_banks — superadmin-managed card fee rates
+// ---------------------------------------------------------------------------
+export const cardBanks = pgTable('card_banks', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 100 }).unique().notNull(), // e.g. 'Default', 'BPI'
+  feePercent: numeric('fee_percent', { precision: 5, scale: 2 }).notNull(), // e.g. 3.00
+  isDefault: boolean('is_default').default(false).notNull(), // true for the fallback entry
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// ---------------------------------------------------------------------------
 // branches
 // ---------------------------------------------------------------------------
 export const branches = pgTable('branches', {

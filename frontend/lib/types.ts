@@ -1,5 +1,13 @@
 import { ItemStatus, PaymentMethod, ServiceType, TransactionStatus } from './constants';
 
+export interface CardBank {
+  id: number;
+  name: string;
+  feePercent: string; // numeric from DB, e.g. '3.00'
+  isDefault: boolean;
+  createdAt: string;
+}
+
 export interface Branch {
   id: number;
   name: string;

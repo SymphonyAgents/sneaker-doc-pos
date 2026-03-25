@@ -12,6 +12,7 @@ export const ROUTES = {
   STAFF: '/staff',
   CUSTOMERS: '/customers',
   REPORTS: '/reports',
+  CARD_BANKS: '/card-banks',
   ONBOARDING: '/onboarding',
 } as const;
 
@@ -27,6 +28,7 @@ export const PROTECTED_ROUTES: string[] = [
   ROUTES.STAFF,
   ROUTES.CUSTOMERS,
   ROUTES.REPORTS,
+  ROUTES.CARD_BANKS,
   ROUTES.ONBOARDING,
 ];
 

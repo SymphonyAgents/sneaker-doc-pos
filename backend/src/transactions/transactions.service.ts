@@ -38,7 +38,6 @@ import {
   TRANSACTION_STATUS,
   AUDIT_TYPE,
   type AuditType,
-  computeCardFee,
 } from '../db/constants';
 import { AuditService } from '../audit/audit.service';
 import { UsersService } from '../users/users.service';
@@ -51,6 +50,7 @@ import { AddPhotoDto } from './dto/add-photo.dto';
 import { EditTransactionDto } from './dto/edit-transaction.dto';
 import { toScaled, fromScaled } from '../utils/money';
 import { PromosService } from '../promos/promos.service';
+import { CardBanksService } from '../card-banks/card-banks.service';
 
 export interface FindAllParams {
   page?: number;
@@ -75,6 +75,7 @@ export class TransactionsService {
     private readonly users: UsersService,
     private readonly sms: SmsService,
     private readonly promosService: PromosService,
+    private readonly cardBanks: CardBanksService,
   ) {}
 
   // Generate next zero-padded transaction number using advisory lock to prevent race conditions.
@@ -1165,7 +1166,10 @@ export class TransactionsService {
     // Compute card fee server-side — never trust frontend for financial calculations
     const isCard = dto.method === 'card';
     const { fee, feePercent } = isCard
-      ? computeCardFee(scaledAmount, dto.cardBank)
+      ? await (async () => {
+          const { rate, feePercent: fp } = await this.cardBanks.getFeeRate(dto.cardBank);
+          return { fee: Math.round(scaledAmount * rate), feePercent: fp };
+        })()
       : { fee: 0, feePercent: '0' };
 
     const [payment] = await this.drizzle.db
@@ -1284,7 +1288,10 @@ export class TransactionsService {
     // Recompute fee when changing to/from card — clear fee for non-card methods
     const isNewCard = dto.method === 'card';
     const { fee: newFee, feePercent: newFeePercent } = isNewCard
-      ? computeCardFee(existing.amount, dto.cardBank)
+      ? await (async () => {
+          const { rate, feePercent: fp } = await this.cardBanks.getFeeRate(dto.cardBank);
+          return { fee: Math.round(existing.amount * rate), feePercent: fp };
+        })()
       : { fee: 0, feePercent: '0' };
 
     const [updated] = await this.drizzle.db
@@ -1426,8 +1433,11 @@ export class TransactionsService {
         // existing.amount is fromScaled (string) — re-scale for fee computation
         const scaledAmt = toScaled(parseFloat(existing.amount ?? '0'));
         const { fee, feePercent } = isCard
-          ? computeCardFee(scaledAmt, payDto.cardBank)
-          : { fee: 0, feePercent: 0 };
+          ? await (async () => {
+              const { rate, feePercent: fp } = await this.cardBanks.getFeeRate(payDto.cardBank);
+              return { fee: Math.round(scaledAmt * rate), feePercent: fp };
+            })()
+          : { fee: 0, feePercent: '0' };
 
         await this.drizzle.db
           .update(claimPayments)

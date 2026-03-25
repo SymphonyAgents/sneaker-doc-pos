@@ -31,7 +31,8 @@ import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
 import type { Service, Promo, Customer, Transaction } from '@/lib/types';
 import { calcItemPrice, calcRawTotal, findPromo, applyPromo } from '@/utils/pricing';
 import { PAYMENT_METHOD_LABELS, cn } from '@/lib/utils';
-import { ITEM_STATUS, CARD_BANK_OPTIONS, getCardFeeRatePreview } from '@/lib/constants';
+import { ITEM_STATUS, buildCardBankOptions, getCardFeeRatePreview } from '@/lib/constants';
+import { useCardBanksQuery } from '@/hooks/useCardBanksQuery';
 import { toTitleCase } from '@/utils/text';
 
 const PAYMENT_METHODS = ['cash', 'gcash', 'card', 'bank_deposit'] as const;
@@ -110,6 +111,8 @@ export function NewTransactionForm() {
 
   const { data: currentUser } = useCurrentUserQuery();
   const { data: assignableUsers = [] } = useAssignableUsersQuery();
+  const { data: cardBanksData = [] } = useCardBanksQuery();
+  const cardBankOptions = buildCardBankOptions(cardBanksData);
   // Include all assignable users (self + others) — default is Unassigned (null/empty)
 
   const [sameServiceToAll, setSameServiceToAll] = useState(false);
@@ -536,7 +539,7 @@ export function NewTransactionForm() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {CARD_BANK_OPTIONS.map((opt) => (
+                        {cardBankOptions.map((opt) => (
                           <SelectItem key={opt.value || '__default__'} value={opt.value || '__default__'}>{opt.label}</SelectItem>
                         ))}
                       </SelectContent>
@@ -566,7 +569,7 @@ export function NewTransactionForm() {
                     )}
                     {watchedPaymentMethod === 'card' && watchedPaymentAmount && parseFloat(watchedPaymentAmount) > 0 && (
                       (() => {
-                        const rate = getCardFeeRatePreview(watchedPaymentCardBank);
+                        const rate = getCardFeeRatePreview(watchedPaymentCardBank, cardBanksData);
                         const fee = parseFloat(watchedPaymentAmount) * rate;
                         const net = parseFloat(watchedPaymentAmount) - fee;
                         return (

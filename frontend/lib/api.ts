@@ -18,6 +18,7 @@ import type {
   DashboardSummary,
   DepositAuditEntry,
   ReportSummary,
+  CardBank,
 } from './types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
@@ -255,5 +256,15 @@ export const api = {
       if (branchId) qs.set('branchId', String(branchId));
       return apiFetch<ReportSummary>(`/reports/summary?${qs}`);
     },
+  },
+
+  cardBanks: {
+    list: () => apiFetch<CardBank[]>('/card-banks'),
+    create: (body: { name: string; feePercent: number }) =>
+      apiFetch<CardBank>('/card-banks', { method: 'POST', body: JSON.stringify(body) }),
+    update: (id: number, body: { name?: string; feePercent?: number }) =>
+      apiFetch<CardBank>(`/card-banks/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    remove: (id: number) =>
+      apiFetch<{ deleted: boolean }>(`/card-banks/${id}`, { method: 'DELETE' }),
   },
 };

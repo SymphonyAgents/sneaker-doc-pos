@@ -59,6 +59,8 @@ export default function ExpensesPage() {
   const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null);
 
   const [photoUploading, setPhotoUploading] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string>('');
   const photoInputRef = useRef<HTMLInputElement>(null);   // gallery picker
   const photoCameraRef = useRef<HTMLInputElement>(null);  // camera capture
 
@@ -68,31 +70,30 @@ export default function ExpensesPage() {
   const { data: expenses = [], isLoading } = useExpensesQuery(selectedDate);
   const { data: summary } = useExpensesSummaryQuery(selectedDate);
 
-  const closeDialog = () => setDialogOpen(false);
+  const clearPending = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPendingFile(null);
+    setPreviewUrl('');
+  };
+  const closeDialog = () => { clearPending(); setDialogOpen(false); };
   const createMut = useCreateExpenseMutation(selectedDate, closeDialog);
   const updateMut = useUpdateExpenseMutation(selectedDate, closeDialog);
   const deleteMut = useDeleteExpenseMutation(selectedDate);
   const isBusy = createMut.isPending || updateMut.isPending || photoUploading;
 
-  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Store file locally; upload only happens on save
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!e.target) return;
-    // Reset input so the same file can be reselected
     (e.target as HTMLInputElement).value = '';
     if (!file) return;
     if (!isValidImageType(file)) { toast.error('Only image files allowed (JPEG, PNG, WebP, HEIC)'); return; }
     if (file.size > RAW_MAX_SIZE_MB * 1024 * 1024) { toast.error(`File must be under ${RAW_MAX_SIZE_MB}MB`); return; }
-    setPhotoUploading(true);
-    try {
-      const { blob } = await compressWithFallback(file);
-      const { signedUrl, publicUrl } = await api.expenses.uploadUrl('jpg');
-      await putToStorage(signedUrl, blob);
-      setForm((f) => ({ ...f, photoUrl: publicUrl }));
-    } catch (err) {
-      toast.error('Photo upload failed', { description: (err as Error).message });
-    } finally {
-      setPhotoUploading(false);
-    }
+    // Revoke any previous pending preview
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPendingFile(file);
+    setPreviewUrl(URL.createObjectURL(file));
+    // Clear any previously saved URL when replacing
+    setForm((f) => ({ ...f, photoUrl: '' }));
   };
 
   useEffect(() => {
@@ -104,12 +105,14 @@ export default function ExpensesPage() {
   }, [searchParams]);
 
   const openCreate = () => {
+    clearPending();
     setEditTarget(null);
     setForm(EMPTY_FORM);
     setDialogOpen(true);
   };
 
   const openEdit = (e: Expense) => {
+    clearPending();
     setEditTarget(e);
     setForm({
       category: e.category ?? '',
@@ -121,8 +124,27 @@ export default function ExpensesPage() {
     setDialogOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.amount) return;
+    let resolvedPhotoUrl = form.photoUrl;
+
+    // Upload pending file now (on save, not on select)
+    if (pendingFile) {
+      setPhotoUploading(true);
+      try {
+        const { blob } = await compressWithFallback(pendingFile);
+        const { signedUrl, publicUrl } = await api.expenses.uploadUrl('jpg');
+        await putToStorage(signedUrl, blob);
+        resolvedPhotoUrl = publicUrl;
+        clearPending();
+      } catch (err) {
+        toast.error('Photo upload failed', { description: (err as Error).message });
+        setPhotoUploading(false);
+        return;
+      }
+      setPhotoUploading(false);
+    }
+
     if (editTarget) {
       updateMut.mutate({
         id: editTarget.id,
@@ -130,7 +152,7 @@ export default function ExpensesPage() {
         note: form.note || undefined,
         method: form.method || undefined,
         amount: form.amount || undefined,
-        photoUrl: form.photoUrl || null,
+        photoUrl: resolvedPhotoUrl || null,
       });
     } else {
       createMut.mutate({
@@ -138,7 +160,7 @@ export default function ExpensesPage() {
         note: form.note || undefined,
         method: form.method || undefined,
         amount: form.amount,
-        photoUrl: form.photoUrl || undefined,
+        photoUrl: resolvedPhotoUrl || undefined,
       });
     }
   };
@@ -304,13 +326,18 @@ export default function ExpensesPage() {
                 className="hidden"
                 onChange={handlePhotoSelect}
               />
-              {form.photoUrl ? (
+              {(previewUrl || form.photoUrl) ? (
                 <div className="relative w-full h-28 rounded-md overflow-hidden border border-zinc-200 bg-zinc-50">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={form.photoUrl} alt="Receipt" className="w-full h-full object-cover" />
+                  <img src={previewUrl || form.photoUrl} alt="Receipt" className="w-full h-full object-cover" />
+                  {pendingFile && (
+                    <div className="absolute bottom-1 left-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
+                      pending · saved on submit
+                    </div>
+                  )}
                   <button
                     type="button"
-                    onClick={() => setForm((f) => ({ ...f, photoUrl: '' }))}
+                    onClick={() => { clearPending(); setForm((f) => ({ ...f, photoUrl: '' })); }}
                     className="absolute top-1 right-1 bg-white rounded-full shadow p-0.5 text-zinc-500 hover:text-red-500 transition-colors"
                   >
                     <XCircleIcon size={18} weight="fill" />
