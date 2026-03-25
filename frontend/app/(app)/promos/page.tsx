@@ -45,6 +45,7 @@ export default function PromosPage() {
   const [editTarget, setEditTarget] = useState<Promo | null>(null);
   const [form, setForm] = useState<PromoForm>(EMPTY_FORM);
   const [deleteTarget, setDeleteTarget] = useState<Promo | null>(null);
+  const [pendingToggle, setPendingToggle] = useState<Promo | null>(null);
   const origFormRef = useRef<PromoForm | null>(null);
 
   const { data: promos = [], isLoading } = usePromosQuery();
@@ -114,7 +115,15 @@ export default function PromosPage() {
   const columns = useMemo(
     () => createPromoColumns({
       onDelete: setDeleteTarget,
-      onToggle: (id, isActive) => updateMut.mutate({ id, isActive }),
+      onToggle: (id, isActive) => {
+        if (!isActive) {
+          // Deactivating — require confirmation
+          const promo = promos?.find((p) => p.id === id) ?? null;
+          setPendingToggle(promo);
+        } else {
+          updateMut.mutate({ id, isActive: true });
+        }
+      },
       onStartEdit: openEdit,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -230,6 +239,19 @@ export default function PromosPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!pendingToggle}
+        title="Deactivate promo?"
+        description={`"${pendingToggle?.name}" will be set to inactive and can no longer be applied to new transactions. You can reactivate it anytime.`}
+        confirmLabel="Deactivate"
+        onConfirm={() => {
+          if (pendingToggle) updateMut.mutate({ id: pendingToggle.id, isActive: false });
+          setPendingToggle(null);
+        }}
+        onCancel={() => setPendingToggle(null)}
+        loading={updateMut.isPending}
+      />
 
       <ConfirmDialog
         open={!!deleteTarget}
