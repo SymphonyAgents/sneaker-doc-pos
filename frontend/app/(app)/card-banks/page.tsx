@@ -13,6 +13,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableHead,
+  TableRow,
+  TableCell,
+} from '@/components/ui/table';
 import { RequireAdmin } from '@/components/auth/RequireAdmin';
 import {
   useCardBanksQuery,
@@ -100,68 +108,77 @@ export default function CardBanksPage() {
           }
         />
 
-        {isLoading ? (
-          <div className="space-y-2 max-w-lg">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="flex items-center justify-between px-4 py-3 bg-white border border-zinc-200 rounded-lg">
-                <div className="space-y-1.5">
-                  <Skeleton className="h-4 w-28" />
-                  <Skeleton className="h-3 w-40" />
-                </div>
-                <div className="flex gap-1">
-                  <Skeleton className="h-7 w-7 rounded" />
-                  <Skeleton className="h-7 w-7 rounded" />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="space-y-2 max-w-lg">
-            {cardBanks.map((b) => (
-              <div
-                key={b.id}
-                className="flex items-center justify-between px-4 py-3 bg-white border border-zinc-200 rounded-lg"
-              >
-                <div>
-                  <p className="text-sm font-medium text-zinc-900">
-                    {b.name}
-                    {b.isDefault && (
-                      <span className="ml-2 text-[10px] font-mono bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded">
-                        default
-                      </span>
+        <div className="rounded-lg border border-zinc-200 bg-white overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-zinc-50">
+                <TableHead className="pl-4">Bank Name</TableHead>
+                <TableHead>Fee %</TableHead>
+                <TableHead>Fee on ₱1,000</TableHead>
+                {isSuperadmin && <TableHead className="w-24 text-right pr-4">Actions</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <>
+                  {[0, 1, 2].map((i) => (
+                    <TableRow key={i}>
+                      <TableCell className="pl-4"><Skeleton className="h-4 w-28" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-14" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                      {isSuperadmin && <TableCell />}
+                    </TableRow>
+                  ))}
+                </>
+              ) : cardBanks.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={isSuperadmin ? 4 : 3} className="pl-4 py-10 text-center text-sm text-zinc-400">
+                    No card banks configured.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                cardBanks.map((b) => (
+                  <TableRow key={b.id}>
+                    <TableCell className="pl-4 font-medium text-zinc-900">
+                      {b.name}
+                      {b.isDefault && (
+                        <span className="ml-2 text-[10px] font-mono bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded">
+                          default
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="font-mono text-sm text-zinc-700">
+                      {parseFloat(b.feePercent).toFixed(2)}%
+                    </TableCell>
+                    <TableCell className="font-mono text-sm text-zinc-500">
+                      ₱{(10 * parseFloat(b.feePercent)).toFixed(2)}
+                    </TableCell>
+                    {isSuperadmin && (
+                      <TableCell className="text-right pr-4">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => openEdit(b)}
+                            className="p-1.5 text-zinc-400 hover:text-zinc-700 rounded transition-colors"
+                          >
+                            <PencilSimpleIcon size={15} />
+                          </button>
+                          {!b.isDefault && (
+                            <button
+                              onClick={() => setDeleteTarget(b)}
+                              className="p-1.5 text-zinc-400 hover:text-red-500 rounded transition-colors"
+                            >
+                              <TrashIcon size={15} />
+                            </button>
+                          )}
+                        </div>
+                      </TableCell>
                     )}
-                  </p>
-                  <p className="text-xs font-mono text-zinc-400 mt-0.5">
-                    {parseFloat(b.feePercent).toFixed(2)}% processing fee
-                  </p>
-                </div>
-                {isSuperadmin && (
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => openEdit(b)}
-                      className="p-1.5 text-zinc-400 hover:text-zinc-700 rounded transition-colors"
-                    >
-                      <PencilSimpleIcon size={15} />
-                    </button>
-                    {!b.isDefault && (
-                      <button
-                        onClick={() => setDeleteTarget(b)}
-                        className="p-1.5 text-zinc-400 hover:text-red-500 rounded transition-colors"
-                      >
-                        <TrashIcon size={15} />
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-            {cardBanks.length === 0 && (
-              <p className="text-sm text-zinc-400 text-center py-10">
-                No card banks configured.
-              </p>
-            )}
-          </div>
-        )}
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
 
         <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open && !isBusy) closeDialog(); }}>
           <DialogContent className="bg-white sm:max-w-sm">
