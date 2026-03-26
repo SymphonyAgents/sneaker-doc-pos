@@ -88,36 +88,33 @@ export function ClaimStubDialog({ open, txn, onViewTransaction }: ClaimStubDialo
     win.document.close();
   }
 
-  const isMobile = /iPhone|iPad|iPod|Android/i.test(
-    typeof navigator !== 'undefined' ? navigator.userAgent : '',
-  );
   const emailLink = txn.customerEmail ? generateClaimStubEmailLink(txn) : null;
 
   function handleEmail() {
-    if (!emailLink) return;
+    if (!emailLink || !stubRef.current) return;
 
-    if (isMobile) {
-      // On mobile: mailto: opens the default mail app with text body pre-filled.
-      // navigator.clipboard.write() with images is unsupported on iOS, so we skip
-      // the image-paste flow and use the text claim stub body instead.
-      openLinkReliably(emailLink);
-      return;
-    }
-
-    // Desktop: open Gmail compose (no body), then copy stub image to clipboard for paste
+    // Open compose window first (synchronous — must be in the gesture handler)
     openLinkReliably(emailLink);
-    (async () => {
-      try {
-        if (!stubRef.current) return;
-        const dataUrl = await toPng(stubRef.current, { pixelRatio: 2 });
-        const res = await fetch(dataUrl);
-        const blob = await res.blob();
-        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-        toast.success('Stub image copied', { description: 'Paste into the Gmail compose body' });
-      } catch {
-        // clipboard image copy not supported on this browser
-      }
-    })();
+
+    // Use the Promise form of ClipboardItem so the browser holds the user gesture
+    // context while toPng renders. Without this, iOS revokes gesture permission
+    // before clipboard.write() is called, causing a silent failure.
+    const stub = stubRef.current;
+    navigator.clipboard
+      .write([
+        new ClipboardItem({
+          'image/png': toPng(stub, { pixelRatio: 2 }).then(async (dataUrl) => {
+            const res = await fetch(dataUrl);
+            return res.blob();
+          }),
+        }),
+      ])
+      .then(() => {
+        toast.success('Stub image copied', { description: 'Paste into the email body' });
+      })
+      .catch(() => {
+        // Clipboard API not supported on this device/browser — user can screenshot instead
+      });
   }
 
   return (

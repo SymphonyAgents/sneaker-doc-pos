@@ -1026,24 +1026,29 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                   type="button"
                   className="flex items-center justify-center gap-2 w-full px-3 py-2 text-sm font-medium bg-zinc-200 text-zinc-800 rounded-md hover:bg-zinc-300 transition-colors duration-150"
                   onClick={() => {
-                    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
                     if (emailTemplate === EMAIL_TEMPLATES.claim_stub) {
                       const link = generateClaimStubEmailLink(txn);
+                      // Open compose first (synchronous — must stay in gesture handler)
                       openLinkReliably(link);
-                      // Desktop only: copy stub image to clipboard for paste into Gmail compose
-                      if (!isMobile) {
-                        (async () => {
-                          try {
-                            if (!stubRef.current) return;
-                            const dataUrl = await toPng(stubRef.current, { pixelRatio: 2 });
-                            const res = await fetch(dataUrl);
-                            const blob = await res.blob();
-                            await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-                            toast.success('Stub image copied', { description: 'Paste into the Gmail compose body' });
-                          } catch {
-                            // clipboard image copy not supported on this browser
-                          }
-                        })();
+                      // Promise-form ClipboardItem: browser holds gesture context while
+                      // toPng renders, so clipboard.write() succeeds on iOS too
+                      if (stubRef.current) {
+                        const stub = stubRef.current;
+                        navigator.clipboard
+                          .write([
+                            new ClipboardItem({
+                              'image/png': toPng(stub, { pixelRatio: 2 }).then(async (dataUrl) => {
+                                const res = await fetch(dataUrl);
+                                return res.blob();
+                              }),
+                            }),
+                          ])
+                          .then(() => {
+                            toast.success('Stub image copied', { description: 'Paste into the email body' });
+                          })
+                          .catch(() => {
+                            // Clipboard API unavailable on this device
+                          });
                       }
                     } else {
                       // generateEmailLink returns mailto: on mobile, Gmail compose URL on desktop

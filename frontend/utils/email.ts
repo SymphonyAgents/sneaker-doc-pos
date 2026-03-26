@@ -156,18 +156,29 @@ export function generateEmailLink(ctx: TransactionEmailContext, templateKey: Ema
 }
 
 /**
- * Claim stub variant: desktop opens Gmail compose with no body (user pastes image).
- * Mobile uses mailto: with the text claim stub in the body — image paste isn't
- * possible on iOS (navigator.clipboard.write with images is unsupported).
+ * Claim stub variant: opens a compose window with to+subject pre-filled, no body.
+ * The caller copies the stub image to clipboard and the user pastes it in.
+ *
+ * - Desktop: Gmail web compose URL (new tab, authuser pre-filled)
+ * - iOS: googlegmail:// URL scheme — opens Gmail app compose directly, bypassing
+ *   the inbox-redirect bug that occurs when opening mail.google.com URLs on iOS.
+ *   Falls back to mailto: if Gmail app is not installed (iOS handles silently).
+ * - Android: mailto: opens the default mail app compose window.
  */
 export function generateClaimStubEmailLink(ctx: TransactionEmailContext): string {
   if (!ctx.customerEmail) return '';
-  const { subject, body } = buildTemplate(EMAIL_TEMPLATES.claim_stub, ctx);
-  if (isMobileDevice()) {
-    // Use text body on mobile — clipboard image paste doesn't work on iOS
-    return `mailto:${encodeURIComponent(ctx.customerEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  const { subject } = buildTemplate(EMAIL_TEMPLATES.claim_stub, ctx);
+  const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const isAndroid = /Android/i.test(navigator.userAgent);
+
+  if (isIOS) {
+    // Gmail iOS URL scheme opens compose directly (not inbox)
+    return `googlegmail://co?to=${encodeURIComponent(ctx.customerEmail)}&subject=${encodeURIComponent(subject)}`;
   }
-  // Desktop: no body — user pastes the claim stub image from clipboard
+  if (isAndroid) {
+    return `mailto:${encodeURIComponent(ctx.customerEmail)}?subject=${encodeURIComponent(subject)}`;
+  }
+  // Desktop: Gmail web compose
   const params = new URLSearchParams({ view: 'cm', to: ctx.customerEmail, su: subject });
   return `https://mail.google.com/mail/u/?authuser=${SENDER_EMAIL}&${params.toString()}`;
 }
