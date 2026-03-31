@@ -30,12 +30,10 @@ import { useAssignableUsersQuery } from '@/hooks/useUsersQuery';
 import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
 import type { Service, Promo, Customer, Transaction } from '@/lib/types';
 import { calcItemPrice, calcRawTotal, findPromo, applyPromo } from '@/utils/pricing';
-import { PAYMENT_METHOD_LABELS, cn } from '@/lib/utils';
-import { ITEM_STATUS, buildCardBankOptions, getCardFeeRatePreview } from '@/lib/constants';
+import { cn } from '@/lib/utils';
+import { ITEM_STATUS, PAYMENT_METHOD_LABELS, PAYMENT_METHOD_VALUES, buildCardBankOptions, getCardFeeRatePreview } from '@/lib/constants';
 import { useCardBanksQuery } from '@/hooks/useCardBanksQuery';
 import { toTitleCase } from '@/utils/text';
-
-const PAYMENT_METHODS = ['cash', 'gcash', 'card', 'bank_deposit'] as const;
 
 async function doPhotoUpload(txnId: number, file: File): Promise<void> {
   const { blob } = await compressWithFallback(file);
@@ -512,7 +510,7 @@ export function NewTransactionForm() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">None</SelectItem>
-                        {PAYMENT_METHODS.map((m) => (
+                        {PAYMENT_METHOD_VALUES.map((m) => (
                           <SelectItem key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</SelectItem>
                         ))}
                       </SelectContent>

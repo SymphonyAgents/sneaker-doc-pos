@@ -36,19 +36,8 @@ import { api } from '@/lib/api';
 import { putToStorage } from '@/hooks/useUploadPhoto';
 import { isValidImageType, RAW_MAX_SIZE_MB, compressWithFallback } from '@/utils/photo';
 import { toast } from 'sonner';
+import { MONTHS, PAYMENT_METHODS_OPTIONS } from '@/lib/constants';
 import type { Expense } from '@/lib/types';
-
-const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
-
-const PAYMENT_METHODS = [
-  { value: 'cash', label: 'Cash' },
-  { value: 'gcash', label: 'GCash' },
-  { value: 'card', label: 'Card' },
-  { value: 'bank_deposit', label: 'Bank Deposit' },
-] as const;
 
 interface ExpenseForm {
   category: string;
@@ -335,7 +324,7 @@ export default function ExpensesPage() {
             <div>
               <p className="text-xs font-medium text-zinc-700 mb-2">Payment Method</p>
               <div className="flex flex-wrap gap-2">
-                {PAYMENT_METHODS.map(({ value, label }) => (
+                {PAYMENT_METHODS_OPTIONS.map(({ value, label }) => (
                   <button
                     key={value}
                     type="button"

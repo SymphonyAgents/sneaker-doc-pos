@@ -8,16 +8,10 @@ import { toast } from 'sonner';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { PAYMENT_METHODS_OPTIONS } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
-
-const PAYMENT_METHODS = [
-  { value: 'cash', label: 'Cash' },
-  { value: 'gcash', label: 'GCash' },
-  { value: 'card', label: 'Card' },
-  { value: 'bank_deposit', label: 'Bank Deposit' },
-] as const;
 
 const schema = z.object({
   category: z.string().optional(),
@@ -84,7 +78,7 @@ export function ExpenseForm({ dateKey, onSuccess, onCancel }: ExpenseFormProps) 
       <div className="mb-4">
         <p className="text-xs font-medium text-zinc-500 mb-2">Payment Method</p>
         <div className="flex flex-wrap gap-2">
-          {PAYMENT_METHODS.map(({ value, label }) => (
+          {PAYMENT_METHODS_OPTIONS.map(({ value, label }) => (
             <button
               key={value}
               type="button"

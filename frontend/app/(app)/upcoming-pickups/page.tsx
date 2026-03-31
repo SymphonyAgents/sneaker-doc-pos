@@ -22,13 +22,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { MONTHS, DAY_HEADERS } from '@/lib/constants';
 import type { Transaction } from '@/lib/types';
-
-const MONTH_NAMES = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
-const DAY_HEADERS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 type ViewMode = 'calendar' | 'table';
 
@@ -225,7 +220,7 @@ export default function UpcomingPickupsPage() {
               <CaretLeftIcon size={16} />
             </button>
             <span className="text-sm font-semibold text-zinc-950">
-              {MONTH_NAMES[viewMonth - 1]} {viewYear}
+              {MONTHS[viewMonth - 1]} {viewYear}
             </span>
             <button
               onClick={nextMonth}

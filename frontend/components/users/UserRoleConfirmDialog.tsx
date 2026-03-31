@@ -3,12 +3,7 @@
 import { ArrowRightIcon } from '@phosphor-icons/react';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
-
-const ROLE_STYLES: Record<string, string> = {
-  staff: 'bg-zinc-100 text-zinc-600',
-  admin: 'bg-blue-50 text-blue-600',
-  superadmin: 'bg-violet-50 text-violet-700',
-};
+import { ROLE_STYLES } from '@/lib/constants';
 
 export interface PendingRoleChange {
   id: string;

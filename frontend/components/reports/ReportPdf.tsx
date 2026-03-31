@@ -6,20 +6,11 @@ import {
   Image,
   StyleSheet,
 } from '@react-pdf/renderer';
+import { MONTHS, STATUS_LABELS } from '@/lib/constants';
 import type { ReportSummary } from '@/lib/types';
 
-const MONTHS = [
-  '', 'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: 'Pending',
-  in_progress: 'In Progress',
-  done: 'Done',
-  claimed: 'Claimed',
-  cancelled: 'Cancelled',
-};
+// 1-indexed month lookup for PDF: MONTHS[0] = 'January', so PDF_MONTHS[1] = 'January'
+const PDF_MONTHS = ['', ...MONTHS];
 
 const s = StyleSheet.create({
   page: {
@@ -180,7 +171,7 @@ interface Props {
 }
 
 export function ReportPdf({ data, year, month, branchName, logoUrl }: Props) {
-  const periodLabel = month === 0 ? `Full Year ${year}` : `${MONTHS[month]} ${year}`;
+  const periodLabel = month === 0 ? `Full Year ${year}` : `${PDF_MONTHS[month]} ${year}`;
   const generatedAt = new Date().toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short' });
 
   const headerMeta = [

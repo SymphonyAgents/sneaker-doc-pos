@@ -16,6 +16,7 @@ import {
 import { toast } from 'sonner';
 import { cn, formatDatetime } from '@/lib/utils';
 import { toTitleCase } from '@/utils/text';
+import { ROLE_STYLES, STAFF_SECTIONS, type StaffSection } from '@/lib/constants';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -33,19 +34,6 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
 import { ROUTES } from '@/lib/routes';
 import type { AppUser } from '@/lib/types';
-
-type Section = 'profile' | 'documents';
-
-const SECTIONS: { id: Section; label: string }[] = [
-  { id: 'profile', label: 'Profile' },
-  { id: 'documents', label: 'Documents' },
-];
-
-const ROLE_STYLES: Record<string, string> = {
-  staff: 'bg-zinc-100 text-zinc-600',
-  admin: 'bg-blue-50 text-blue-600',
-  superadmin: 'bg-violet-50 text-violet-700',
-};
 
 const BUCKET = 'staff-documents';
 
@@ -82,7 +70,7 @@ export default function StaffProfilePage() {
   const [approveOpen, setApproveOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
 
-  const [section, setSection] = useState<Section>('profile');
+  const [section, setSection] = useState<StaffSection>('profile');
 
   const [form, setForm] = useState({
     fullName: '',
@@ -424,7 +412,7 @@ export default function StaffProfilePage() {
         {/* Nav — horizontal tabs on mobile, vertical list on desktop */}
         <nav className="lg:w-44 shrink-0">
           <div className="flex lg:hidden gap-1 overflow-x-auto pb-2 -mx-1 px-1">
-            {SECTIONS.map(({ id, label }) => (
+            {STAFF_SECTIONS.map(({ id, label }) => (
               <button
                 key={id}
                 onClick={() => setSection(id)}
@@ -438,7 +426,7 @@ export default function StaffProfilePage() {
             ))}
           </div>
           <div className="hidden lg:flex flex-col gap-0.5">
-            {SECTIONS.map(({ id, label }) => (
+            {STAFF_SECTIONS.map(({ id, label }) => (
               <button
                 key={id}
                 onClick={() => setSection(id)}

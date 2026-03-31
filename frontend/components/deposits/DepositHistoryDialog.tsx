@@ -10,16 +10,8 @@ import {
 } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
 import { formatPeso, formatDatetime, cn } from '@/lib/utils';
+import { DEPOSIT_FILTERS, type PaymentFilter } from '@/lib/constants';
 import { useDepositsAuditQuery } from '@/hooks/useDepositsQuery';
-
-type PaymentFilter = 'all' | 'cash' | 'gcash' | 'card';
-
-const FILTERS: { label: string; value: PaymentFilter }[] = [
-  { label: 'All', value: 'all' },
-  { label: 'Cash', value: 'cash' },
-  { label: 'GCash', value: 'gcash' },
-  { label: 'Card', value: 'card' },
-];
 
 interface DepositHistoryDialogProps {
   open: boolean;
@@ -60,7 +52,7 @@ export function DepositHistoryDialog({
 
         {/* Filter buttons — stays fixed, outside scroll area */}
         <div className="flex gap-1.5 flex-wrap">
-          {FILTERS.map((f) => (
+          {DEPOSIT_FILTERS.map((f) => (
             <button
               key={f.value}
               onClick={() => setFilter(f.value)}

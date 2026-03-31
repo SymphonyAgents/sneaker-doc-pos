@@ -13,11 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-
-const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
+import { MONTHS } from '@/lib/constants';
 
 const now = new Date();
 const CURRENT_MONTH = now.getMonth() + 1;

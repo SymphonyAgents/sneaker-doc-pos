@@ -30,7 +30,8 @@ import { Spinner } from '@/components/ui/spinner';
 import { DepositHistoryDialog } from '@/components/deposits/DepositHistoryDialog';
 import { CollectionHistoryDialog } from '@/components/deposits/CollectionHistoryDialog';
 import { QrScanDialog } from '@/components/ui/qr-scan-dialog';
-import { formatPeso, formatDate, PAYMENT_METHOD_LABELS } from '@/lib/utils';
+import { formatPeso, formatDate } from '@/lib/utils';
+import { MONTHS, METHOD_ORDER, PAYMENT_METHOD_LABELS } from '@/lib/constants';
 import {
   useDashboardSummaryQuery,
   useRecentTransactionsQuery,
@@ -58,11 +59,6 @@ const ALL_QUICK_ACTIONS = [
   { label: 'New Promo', href: '/promos?new=1', icon: TagIcon, adminOnly: true },
 ];
 
-const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
-
 const PAYMENT_METHOD_CONFIG: Record<string, {
   label: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
@@ -74,8 +70,6 @@ const PAYMENT_METHOD_CONFIG: Record<string, {
   cash: { label: 'Cash', icon: MoneyIcon, iconClass: 'text-emerald-600', iconBg: 'bg-emerald-50' },
   card: { label: 'Card', icon: CreditCardIcon, iconClass: 'text-violet-600', iconBg: 'bg-violet-50' },
 };
-
-const METHOD_ORDER = ['gcash', 'bank_deposit', 'cash', 'card'] as const;
 
 function pickupDateClass(dateStr: string | null) {
   if (!dateStr) return 'text-zinc-400';

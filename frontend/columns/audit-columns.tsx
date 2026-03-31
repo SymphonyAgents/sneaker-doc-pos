@@ -1,52 +1,17 @@
 'use client';
 
 import { type ColumnDef } from '@tanstack/react-table';
-import { formatDatetime, formatPeso, PAYMENT_METHOD_LABELS, STATUS_LABELS } from '@/lib/utils';
-import { ITEM_STATUS } from '@/lib/constants';
+import { formatDatetime, formatPeso } from '@/lib/utils';
+import {
+  ITEM_STATUS,
+  PAYMENT_METHOD_LABELS,
+  STATUS_LABELS,
+  AUDIT_TYPE_LABELS,
+  AUDIT_TYPE_STYLES,
+  ENTITY_LABELS,
+  SOURCE_LABELS,
+} from '@/lib/constants';
 import type { AuditEntry } from '@/lib/types';
-
-const AUDIT_TYPE_LABELS: Record<string, string> = {
-  TRANSACTION_CREATED: 'Transaction Created',
-  TRANSACTION_UPDATED: 'Transaction Updated',
-  TRANSACTION_RESTORED: 'Transaction Restored',
-  PICKUP_RESCHEDULED: 'Pickup Rescheduled',
-  TRANSACTION_STATUS_CHANGED: 'Status Changed',
-  TRANSACTION_CLAIMED: 'Transaction Claimed',
-  TRANSACTION_CANCELLED: 'Transaction Cancelled',
-  ITEM_STATUS_CHANGED: 'Item Status Changed',
-  PAYMENT_ADDED: 'Payment Added',
-  EXPENSE_CREATED: 'Expense Logged',
-  SERVICE_UPDATED: 'Service Updated',
-  SMS_SENT: 'SMS Sent',
-};
-
-const AUDIT_TYPE_STYLES: Record<string, string> = {
-  TRANSACTION_CREATED: 'bg-emerald-50 text-emerald-700',
-  EXPENSE_CREATED: 'bg-emerald-50 text-emerald-700',
-  PAYMENT_ADDED: 'bg-violet-50 text-violet-700',
-  PICKUP_RESCHEDULED: 'bg-amber-50 text-amber-700',
-  TRANSACTION_CANCELLED: 'bg-red-50 text-red-700',
-  TRANSACTION_CLAIMED: 'bg-blue-50 text-blue-700',
-  TRANSACTION_STATUS_CHANGED: 'bg-blue-50 text-blue-700',
-  ITEM_STATUS_CHANGED: 'bg-blue-50 text-blue-700',
-  TRANSACTION_UPDATED: 'bg-zinc-100 text-zinc-600',
-  TRANSACTION_RESTORED: 'bg-emerald-50 text-emerald-700',
-  SERVICE_UPDATED: 'bg-zinc-100 text-zinc-600',
-  SMS_SENT: 'bg-sky-50 text-sky-700',
-};
-
-const ENTITY_LABELS: Record<string, string> = {
-  transaction: 'Transaction',
-  transaction_item: 'Item',
-  service: 'Service',
-  promo: 'Promo',
-  expense: 'Expense',
-};
-
-const SOURCE_LABELS: Record<string, string> = {
-  pos: 'POS',
-  admin: 'Admin',
-};
 
 function getEventLabel(entry: AuditEntry): string {
   if (entry.auditType && AUDIT_TYPE_LABELS[entry.auditType]) {

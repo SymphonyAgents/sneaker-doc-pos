@@ -15,37 +15,19 @@ import { api } from '@/lib/api';
 import { useBranchesQuery } from '@/hooks/useBranchesQuery';
 import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
 import { cn } from '@/lib/utils';
+import { STATUS_LABELS, MONTHS } from '@/lib/constants';
 import { PdfDownloadButton } from '@/components/reports/PdfDownloadButton';
 import { Spinner } from '@/components/ui/spinner';
 
-const MONTHS = [
+const REPORT_MONTHS = [
   { value: 0, label: 'Full Year' },
-  { value: 1, label: 'January' },
-  { value: 2, label: 'February' },
-  { value: 3, label: 'March' },
-  { value: 4, label: 'April' },
-  { value: 5, label: 'May' },
-  { value: 6, label: 'June' },
-  { value: 7, label: 'July' },
-  { value: 8, label: 'August' },
-  { value: 9, label: 'September' },
-  { value: 10, label: 'October' },
-  { value: 11, label: 'November' },
-  { value: 12, label: 'December' },
+  ...MONTHS.map((label, i) => ({ value: i + 1, label })),
 ];
 
 const now = new Date();
 const CURRENT_YEAR = now.getFullYear();
 const CURRENT_MONTH = now.getMonth() + 1;
 const YEARS = Array.from({ length: 3 }, (_, i) => CURRENT_YEAR - i);
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: 'Pending',
-  in_progress: 'In Progress',
-  done: 'Done',
-  claimed: 'Claimed',
-  cancelled: 'Cancelled',
-};
 
 function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
@@ -73,7 +55,7 @@ export default function ReportsPage() {
   });
 
   const selectedBranch = branches.find((b) => b.id === branchId);
-  const periodLabel = month === 0 ? `Year ${year}` : `${MONTHS[month].label} ${year}`;
+  const periodLabel = month === 0 ? `Year ${year}` : `${REPORT_MONTHS[month].label} ${year}`;
 
   return (
     <RequireAdmin>
@@ -101,7 +83,7 @@ export default function ReportsPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {MONTHS.map(({ value, label }) => (
+              {REPORT_MONTHS.map(({ value, label }) => (
                 <SelectItem key={value} value={String(value)}>{label}</SelectItem>
               ))}
             </SelectContent>

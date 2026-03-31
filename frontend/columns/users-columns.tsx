@@ -11,15 +11,8 @@ import {
   SelectTrigger,
 } from '@/components/ui/select';
 import { toTitleCase } from '@/utils/text';
+import { ROLES, ROLE_STYLES } from '@/lib/constants';
 import type { AppUser, Branch } from '@/lib/types';
-
-const ROLES = ['staff', 'admin', 'superadmin'] as const;
-
-const ROLE_STYLES: Record<string, string> = {
-  staff: 'bg-zinc-100 text-zinc-600',
-  admin: 'bg-blue-50 text-blue-600',
-  superadmin: 'bg-violet-50 text-violet-700',
-};
 
 function RoleBadge({ role }: { role: string }) {
   return (

@@ -2,16 +2,10 @@
 
 import { type ColumnDef } from '@tanstack/react-table';
 import { TrashIcon, ReceiptIcon, PencilSimpleIcon, ImageIcon } from '@phosphor-icons/react';
-import { formatPeso, PAYMENT_METHOD_LABELS } from '@/lib/utils';
+import { formatPeso } from '@/lib/utils';
+import { PAYMENT_METHOD_LABELS, METHOD_STYLES } from '@/lib/constants';
 import { toTitleCase } from '@/utils/text';
 import type { Expense } from '@/lib/types';
-
-const METHOD_STYLES: Record<string, string> = {
-  cash: 'bg-emerald-50 text-emerald-700',
-  gcash: 'bg-blue-50 text-blue-700',
-  card: 'bg-violet-50 text-violet-700',
-  bank_deposit: 'bg-amber-50 text-amber-700',
-};
 
 export interface ExpenseEditForm {
   category: string;

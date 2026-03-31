@@ -3,13 +3,11 @@
 import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
+import { STAFF_ALLOWED_PATHS } from '@/lib/constants';
 
 interface RequireAdminProps {
   children: React.ReactNode;
 }
-
-// Pages that staff can access in read-only mode (not fully restricted to admin)
-const STAFF_ALLOWED_PATHS = ['/expenses'];
 
 export function RequireAdmin({ children }: RequireAdminProps) {
   const router = useRouter();
