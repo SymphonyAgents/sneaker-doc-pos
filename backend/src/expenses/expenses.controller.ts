@@ -57,8 +57,7 @@ export class ExpensesController {
     return this.expensesService.summary(date, isStaff ? req.user.id : undefined, isStaff ? undefined : branchId);
   }
 
-  @UseGuards(SupabaseAuthGuard, RolesGuard)
-  @Roles('admin', 'superadmin')
+  @UseGuards(SupabaseAuthGuard)
   @Get('monthly')
   async findByMonth(
     @Req() req: AuthedRequest,
@@ -66,11 +65,14 @@ export class ExpensesController {
     @Query('month') month: string,
   ) {
     const dbUser = await this.usersService.findById(req.user.id) as { userType: string; branchId?: number | null } | null;
+    const isStaff = dbUser?.userType === 'staff';
     const branchId = this.scopedBranchId(dbUser);
+    // Staff see only their own expenses for the month
     return this.expensesService.findByMonth(
       parseInt(year, 10),
       parseInt(month, 10),
-      branchId,
+      isStaff ? undefined : branchId,
+      isStaff ? req.user.id : undefined,
     );
   }
 

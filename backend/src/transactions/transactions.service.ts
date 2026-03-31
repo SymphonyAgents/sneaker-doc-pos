@@ -180,7 +180,7 @@ export class TransactionsService {
       .from(transactionPhotos)
       .where(eq(transactionPhotos.transactionId, id))
       .orderBy(transactionPhotos.createdAt)
-      .catch(() => []); // graceful fallback if migration hasn't run yet
+      .catch(() => [] as { id: number; transactionId: number; type: string; url: string; createdAt: Date }[]); // graceful fallback if migration hasn't run yet
 
     // Fetch customer address if phone is available
     let customerAddress: {
@@ -749,10 +749,54 @@ export class TransactionsService {
       }
     });
 
+    // Deduct expenses from their respective collection channels by method
+    const expenseConditions: ReturnType<typeof eq>[] = [
+      isNull(expenses.deletedAt) as ReturnType<typeof eq>,
+    ];
+    if (year !== 0) {
+      const fromDate = month === 0
+        ? `${year}-01-01`
+        : `${year}-${String(month).padStart(2, '0')}-01`;
+      const toDate = month === 0
+        ? `${year}-12-31`
+        : (() => {
+            const lastDay = new Date(year, month, 0).getDate();
+            return `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+          })();
+      expenseConditions.push(gte(expenses.dateKey, fromDate) as ReturnType<typeof eq>);
+      expenseConditions.push(lte(expenses.dateKey, toDate) as ReturnType<typeof eq>);
+    }
+    if (branchId) {
+      const staffRows = await this.drizzle.db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(eq(usersTable.branchId, branchId));
+      const staffIds = staffRows.map((u) => u.id);
+      if (staffIds.length > 0) {
+        expenseConditions.push(inArray(expenses.staffId, staffIds) as ReturnType<typeof eq>);
+      }
+    }
+    const expenseByMethod = await this.drizzle.db
+      .select({
+        method: expenses.method,
+        total: sql<number>`COALESCE(SUM(${expenses.amount}), 0)`,
+      })
+      .from(expenses)
+      .where(and(...expenseConditions))
+      .groupBy(expenses.method);
+
+    expenseByMethod.forEach((r) => {
+      const m = r.method ?? 'cash';
+      const amount = Number(r.total);
+      if (m in collected) {
+        collected[m] = Math.max(0, collected[m] - amount);
+      }
+    });
+
     return {
       cash: fromScaled(collected.cash),
       gcash: fromScaled(collected.gcash),
-      card: fromScaled(collected.card),          // net (after card fees deducted)
+      card: fromScaled(collected.card),          // net (after card fees + expenses deducted)
       cardFee: fromScaled(fees.card),            // total card fees for the period
       bank_deposit: fromScaled(bankDepositTotal),
     };
@@ -850,6 +894,7 @@ export class TransactionsService {
       todayCollectionRows,
       dailyRevenueRow,
       dailyCountRow,
+      totalPairsRow,
     ] = await Promise.all([
       // 1. Monthly revenue + paid from active (non-cancelled) transactions
       this.drizzle.db
@@ -937,6 +982,13 @@ export class TransactionsService {
           .from(transactions)
           .where(and(...dailyConds));
       })(),
+
+      // 8. Total pairs (count of transaction_items for active txns in range)
+      this.drizzle.db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(transactionItems)
+        .innerJoin(transactions, eq(transactionItems.transactionId, transactions.id))
+        .where(and(...activeTxnConditions)),
     ]);
 
     // ---------- Compute all values (Number() to guard against string coercion) ----------
@@ -960,10 +1012,12 @@ export class TransactionsService {
     const dailyRev = Number(dailyRevenueRow[0]?.totalRevenue ?? 0);
     const dailyPaid = Number(dailyRevenueRow[0]?.totalPaid ?? 0);
     const dailyCount = Number(dailyCountRow[0]?.count ?? 0);
+    const totalPairs = Number(totalPairsRow[0]?.count ?? 0);
 
     return {
       monthly: {
         transactionCount: txnCount,
+        totalPairs,
         totalRevenue: fromScaled(totalRevenue),
         totalPaid: fromScaled(totalPaid),
         totalBalance: fromScaled(totalRevenue - totalPaid),
@@ -1095,11 +1149,18 @@ export class TransactionsService {
 
     // Validate BEFORE writing — guards must run before any DB mutation
     if (dto.status && dto.status !== existing.status && dto.status === 'claimed') {
-      const otherClaimable = (txn.items ?? []).filter(
-        (i) => i.id !== itemId && i.status !== 'claimed' && i.status !== 'cancelled',
-      );
-      if (otherClaimable.length === 0 && txn.total > txn.paid) {
-        throw new BadRequestException('Balance must be fully settled before the last item can be claimed.');
+      // Block claim if no after photos exist (transaction-level or item-level)
+      const hasAfterPhoto =
+        (txn.photos ?? []).some((p) => p.type === 'after') ||
+        !!existing.afterImageUrl;
+      if (!hasAfterPhoto) {
+        throw new BadRequestException('After photos are required before claiming.');
+      }
+
+      // Block claim if there is any unpaid balance
+      if (txn.total > txn.paid) {
+        const bal = fromScaled(txn.total - txn.paid);
+        throw new BadRequestException(`Full payment is required before claiming. Outstanding balance: ₱${bal}`);
       }
     }
 
@@ -1584,14 +1645,17 @@ export class TransactionsService {
       .where(and(eq(transactionPhotos.id, photoId), eq(transactionPhotos.transactionId, txnId)));
   }
 
-  async remove(id: number, performedBy?: string) {
+  async remove(id: number, performedBy?: string, userType?: string) {
     const txn = await this.findOne(id);
 
-    const deletableStatuses = ['pending', 'cancelled'];
-    if (!deletableStatuses.includes(txn.status)) {
-      throw new BadRequestException(
-        `Cannot delete — transaction status is "${txn.status}". Only Pending or Cancelled transactions can be deleted.`,
-      );
+    // Superadmin can delete any status; admin restricted to pending/cancelled
+    if (userType !== 'superadmin') {
+      const deletableStatuses = ['pending', 'cancelled'];
+      if (!deletableStatuses.includes(txn.status)) {
+        throw new BadRequestException(
+          `Cannot delete — transaction status is "${txn.status}". Only Pending or Cancelled transactions can be deleted.`,
+        );
+      }
     }
 
     await this.drizzle.db

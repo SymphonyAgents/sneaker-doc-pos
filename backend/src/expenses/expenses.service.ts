@@ -26,7 +26,7 @@ export class ExpensesService {
     return rows.map((u) => u.id);
   }
 
-  async findByMonth(year: number, month: number, branchId?: number) {
+  async findByMonth(year: number, month: number, branchId?: number, staffId?: string) {
     // month=0 means full year
     const from = month === 0 ? `${year}-01-01` : `${year}-${String(month).padStart(2, '0')}-01`;
     const to = month === 0
@@ -34,6 +34,15 @@ export class ExpensesService {
       : `${year}-${String(month).padStart(2, '0')}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`;
 
     const dateRange = and(gte(expenses.dateKey, from), lte(expenses.dateKey, to), isNull(expenses.deletedAt));
+
+    // Staff: scoped to their own records only
+    if (staffId) {
+      const rows = await this.drizzle.db
+        .select()
+        .from(expenses)
+        .where(and(dateRange, eq(expenses.staffId, staffId)));
+      return rows.map((e) => ({ ...e, amount: fromScaled(e.amount) }));
+    }
 
     if (branchId) {
       const staffIds = await this.branchStaffIds(branchId);

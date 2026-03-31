@@ -13,6 +13,7 @@ import { createExpenseColumns, type ExpenseEditForm } from '@/columns/expenses-c
 import {
   useExpensesQuery,
   useExpensesSummaryQuery,
+  useMonthlyExpensesQuery,
   useCreateExpenseMutation,
   useUpdateExpenseMutation,
   useDeleteExpenseMutation,
@@ -24,11 +25,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { api } from '@/lib/api';
 import { putToStorage } from '@/hooks/useUploadPhoto';
 import { isValidImageType, RAW_MAX_SIZE_MB, compressWithFallback } from '@/utils/photo';
 import { toast } from 'sonner';
 import type { Expense } from '@/lib/types';
+
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
 
 const PAYMENT_METHODS = [
   { value: 'cash', label: 'Cash' },
@@ -51,7 +64,11 @@ const INPUT_CLS = 'w-full px-3 py-2 text-sm border border-zinc-200 rounded-md fo
 
 export default function ExpensesPage() {
   const searchParams = useSearchParams();
+  const now = new Date();
   const [selectedDate, setSelectedDate] = useState(today());
+  const [viewMode, setViewMode] = useState<'daily' | 'monthly'>('daily');
+  const [monthYear, setMonthYear] = useState(now.getFullYear());
+  const [monthMonth, setMonthMonth] = useState(now.getMonth() + 1);
   const [activeTab, setActiveTab] = useState<'main' | 'fees'>('main');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Expense | null>(null);
@@ -67,8 +84,16 @@ export default function ExpensesPage() {
   const { data: currentUser } = useCurrentUserQuery();
   const isAdmin = currentUser?.userType === 'admin' || currentUser?.userType === 'superadmin';
 
-  const { data: expenses = [], isLoading } = useExpensesQuery(selectedDate);
+  const { data: dailyExpenses = [], isLoading: dailyLoading } = useExpensesQuery(selectedDate);
   const { data: summary } = useExpensesSummaryQuery(selectedDate);
+  const { data: monthlyExpenses = [], isLoading: monthlyLoading } = useMonthlyExpensesQuery(
+    monthYear,
+    monthMonth,
+    { enabled: viewMode === 'monthly' },
+  );
+
+  const expenses = viewMode === 'monthly' ? (monthlyExpenses as Expense[]) : (dailyExpenses as Expense[]);
+  const isLoading = viewMode === 'monthly' ? monthlyLoading : dailyLoading;
 
   const clearPending = () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -186,8 +211,8 @@ export default function ExpensesPage() {
     <div>
       <PageHeader
         title="Expenses"
-        subtitle="Daily operational expenses"
-        action={activeTab === 'main' ? (
+        subtitle={viewMode === 'monthly' ? 'Monthly expenses' : 'Daily operational expenses'}
+        action={activeTab === 'main' && viewMode === 'daily' ? (
           <Button onClick={openCreate}>
             <ReceiptIcon size={14} weight="bold" />
             Add Expense
@@ -195,18 +220,71 @@ export default function ExpensesPage() {
         ) : undefined}
       />
 
-      <div className="flex items-center gap-4 mb-4">
-        <input
-          type="date"
-          value={selectedDate}
-          onChange={(e) => setSelectedDate(e.target.value)}
-          className="px-3 py-2 text-sm bg-white border border-zinc-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-        />
-        {summary && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm text-zinc-400">Daily total:</span>
-            <span className="font-mono font-semibold text-zinc-950">{formatPeso(summary.total)}</span>
-          </div>
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        {/* View mode toggle */}
+        <div className="flex items-center rounded-md border border-zinc-200 bg-white overflow-hidden">
+          {(['daily', 'monthly'] as const).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => setViewMode(mode)}
+              className={cn(
+                'px-3 py-1.5 text-xs font-medium transition-colors duration-150',
+                viewMode === mode
+                  ? 'bg-zinc-950 text-white'
+                  : 'text-zinc-500 hover:text-zinc-800',
+              )}
+            >
+              {mode === 'daily' ? 'Daily' : 'Monthly'}
+            </button>
+          ))}
+        </div>
+
+        {viewMode === 'daily' ? (
+          <>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="px-3 py-2 text-sm bg-white border border-zinc-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+            />
+            {summary && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm text-zinc-400">Total:</span>
+                <span className="font-mono font-semibold text-zinc-950">{formatPeso(summary.total)}</span>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <Select value={String(monthMonth)} onValueChange={(v) => setMonthMonth(parseInt(v, 10))}>
+              <SelectTrigger className="h-9 text-sm w-32 border-zinc-200">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MONTHS.map((m, i) => (
+                  <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={String(monthYear)} onValueChange={(v) => setMonthYear(parseInt(v, 10))}>
+              <SelectTrigger className="h-9 text-sm w-24 border-zinc-200">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[2024, 2025, 2026].map((y) => (
+                  <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!isLoading && expenses.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm text-zinc-400">Total:</span>
+                <span className="font-mono font-semibold text-zinc-950">
+                  {formatPeso(String(expenses.reduce((s, e) => s + parseFloat(e.amount ?? '0'), 0)))}
+                </span>
+              </div>
+            )}
+          </>
         )}
       </div>
 

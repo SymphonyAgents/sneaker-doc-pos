@@ -170,6 +170,11 @@ export const api = {
       if (params?.performedBy) qs.set('performedBy', params.performedBy);
       return apiFetch<AuditEntry[]>(`/audit?${qs}`);
     },
+    findByTransaction: (txnNumber: string, auditType?: string) => {
+      const qs = new URLSearchParams();
+      if (auditType) qs.set('auditType', auditType);
+      return apiFetch<AuditEntry[]>(`/audit/transaction/${encodeURIComponent(txnNumber)}?${qs}`);
+    },
   },
 
   customers: {

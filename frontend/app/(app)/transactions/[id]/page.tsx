@@ -3,7 +3,7 @@
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
-import { ArrowLeftIcon, PlusIcon, EnvelopeIcon, PaperPlaneTiltIcon, TrashIcon, CameraIcon, UploadSimpleIcon, ArrowCounterClockwiseIcon, WarningIcon, PencilSimpleIcon } from '@phosphor-icons/react';
+import { ArrowLeftIcon, PlusIcon, EnvelopeIcon, PaperPlaneTiltIcon, TrashIcon, CameraIcon, UploadSimpleIcon, ArrowCounterClockwiseIcon, WarningIcon, PencilSimpleIcon, PrinterIcon } from '@phosphor-icons/react';
 import { Lightbox } from '@/components/ui/lightbox';
 import Link from 'next/link';
 import { formatPeso, formatDate, formatDatetime, formatAddress, PAYMENT_METHOD_LABELS, cn } from '@/lib/utils';
@@ -51,6 +51,8 @@ import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { generateEmailLink, generateClaimStubEmailLink, openLinkReliably, EMAIL_TEMPLATES, EMAIL_TEMPLATE_LABELS } from '@/utils/email';
 import { ClaimStubPreview } from '@/components/transactions/ClaimStubPreview';
+import { ClaimStubDialog } from '@/components/transactions/ClaimStubDialog';
+import { PaymentHistoryCard } from '@/components/transactions/PaymentHistoryCard';
 import type { EmailTemplateKey } from '@/utils/email';
 import type { PaymentMethod } from '@/lib/types';
 import { ItemStatusConfirmDialog, type PendingItemChange } from '@/components/transactions/ItemStatusConfirmDialog';
@@ -78,6 +80,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
   const [smsDialogOpen, setSmsDialogOpen] = useState(false);
+  const [claimStubOpen, setClaimStubOpen] = useState(false);
 
   const [smsSending, setSmsSending] = useState(false);
   const [smsConfirmed, setSmsConfirmed] = useState(false);
@@ -258,6 +261,24 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
     () => createTransactionItemColumns({
       onStatusChange: (itemId, status) => {
         const item = txnRef.current?.items?.find((i) => i.id === itemId);
+        const currentTxn = txnRef.current;
+
+        // Block claim early if after photos missing or unpaid balance
+        if (status === 'claimed' && currentTxn) {
+          const hasAfterPhoto =
+            (currentTxn.photos ?? []).some((p) => p.type === 'after') ||
+            !!item?.afterImageUrl;
+          if (!hasAfterPhoto) {
+            toast.error('After photos are required before claiming.');
+            return;
+          }
+          const bal = parseFloat(currentTxn.total) - parseFloat(currentTxn.paid);
+          if (bal > 0) {
+            toast.error(`Full payment required before claiming. Balance: ${formatPeso(bal)}`);
+            return;
+          }
+        }
+
         setPendingItemChange({
           itemId,
           newStatus: status,
@@ -327,7 +348,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
               </Button>
             );
           }
-          const cantDelete = !['pending', 'cancelled'].includes(txn.status);
+          const cantDelete = !isSuperadmin && !['pending', 'cancelled'].includes(txn.status);
           const deleteTitle = cantDelete
             ? 'Only Pending or Cancelled transactions can be deleted'
             : undefined;
@@ -855,39 +876,8 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
             </DialogContent>
           </Dialog>
 
-          {/* Payment history */}
-          {txn.payments && txn.payments.length > 0 && (
-            <div className="bg-white border border-zinc-200 rounded-lg p-5">
-              <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-3">
-                Payment History
-              </h2>
-              <div className="space-y-2">
-                {txn.payments.map((p) => (
-                  <div key={p.id} className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium text-zinc-700">
-                        {p.method === 'card'
-                          ? `Card${p.cardBank ? ` · ${p.cardBank.toUpperCase()}` : ''}`
-                          : (PAYMENT_METHOD_LABELS[p.method] ?? p.method)}
-                        {p.referenceNumber && (
-                          <span className="ml-1.5 font-mono font-normal text-zinc-400">#{p.referenceNumber}</span>
-                        )}
-                      </p>
-                      {p.method === 'card' && Number(p.fee) > 0 && (
-                        <p className="text-xs text-violet-500 font-mono">
-                          fee {p.feePercent}% · -{formatPeso(p.fee)}
-                        </p>
-                      )}
-                      <p className="text-xs text-zinc-400">{formatDatetime(p.paidAt)}</p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="font-mono text-sm text-zinc-950">{formatPeso(p.amount)}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Payment history + SMS history (tabbed) */}
+          <PaymentHistoryCard txn={txn} />
 
 
           {/* Assigned Staff — all roles can assign */}
@@ -930,6 +920,14 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
               />
               <p className="text-xs font-mono text-zinc-400">#{txn.number}</p>
             </div>
+            <button
+              type="button"
+              onClick={() => setClaimStubOpen(true)}
+              className="mt-4 flex items-center justify-center gap-2 w-full px-3 py-2 text-sm font-medium bg-zinc-200 text-zinc-800 rounded-md hover:bg-zinc-300 transition-colors duration-150"
+            >
+              <PrinterIcon size={13} />
+              View Claim Stub
+            </button>
             {txn.customerPhone && (() => {
               const hasDoneItems = (txn.items ?? []).some((i) => i.status === 'done');
               return (
@@ -938,7 +936,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                   onClick={handleSendPickupSms}
                   disabled={!hasDoneItems}
                   title={!hasDoneItems ? 'No items are marked as done yet' : undefined}
-                  className="mt-4 flex items-center justify-center gap-2 w-full px-3 py-2 text-sm font-medium bg-zinc-200 text-zinc-800 rounded-md hover:bg-zinc-300 transition-colors duration-150 disabled:opacity-40 disabled:pointer-events-none"
+                  className="mt-2 flex items-center justify-center gap-2 w-full px-3 py-2 text-sm font-medium bg-zinc-200 text-zinc-800 rounded-md hover:bg-zinc-300 transition-colors duration-150 disabled:opacity-40 disabled:pointer-events-none"
                 >
                   <PaperPlaneTiltIcon size={13} />
                   Send SMS — Ready for Pickup
@@ -1069,6 +1067,13 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
               <ClaimStubPreview ref={stubRef} txn={txn} />
             </div>
           )}
+
+          {/* Claim stub reprint dialog */}
+          <ClaimStubDialog
+            open={claimStubOpen}
+            txn={txn}
+            onViewTransaction={() => setClaimStubOpen(false)}
+          />
         </div>
       </div>
 

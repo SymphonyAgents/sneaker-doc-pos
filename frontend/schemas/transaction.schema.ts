@@ -6,6 +6,8 @@ export const itemSchema = z.object({
   addonServiceIds: z.array(z.string()),
 });
 
+const METHODS_REQUIRING_REF = ['gcash', 'card', 'bank_deposit'];
+
 export const transactionSchema = z.object({
   customerName: z.string().min(1, 'Customer name is required'),
   customerPhone: z.string().regex(/^09\d{9}$/, 'Enter a valid PH mobile number (09XXXXXXXXX)'),
@@ -28,6 +30,21 @@ export const transactionSchema = z.object({
   paymentCardBank: z.string().optional(), // '' = default (3%), 'bpi' = 3.5%
   staffId: z.string().optional(),
   items: z.array(itemSchema).min(1, 'Add at least one item'),
+}).superRefine((data, ctx) => {
+  // Reference # required for GCash, Card, Bank Deposit when a payment is being made
+  if (
+    data.paymentMethod &&
+    METHODS_REQUIRING_REF.includes(data.paymentMethod) &&
+    data.paymentAmount &&
+    parseFloat(data.paymentAmount) > 0 &&
+    !data.paymentReference?.trim()
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Reference # is required for GCash, Card, and Bank Deposit',
+      path: ['paymentReference'],
+    });
+  }
 });
 
 export type TransactionFormData = z.infer<typeof transactionSchema>;

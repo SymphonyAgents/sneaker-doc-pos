@@ -56,6 +56,28 @@ export class AuditService {
       .limit(limit);
   }
 
+  async findByEntity(entityType: string, entityId: string, auditType?: string) {
+    const conditions: ReturnType<typeof eq>[] = [
+      eq(auditLog.entityType, entityType),
+      eq(auditLog.entityId, entityId),
+    ];
+    if (auditType) {
+      conditions.push(eq(auditLog.auditType, auditType));
+    }
+    return this.drizzle.db
+      .select({
+        ...getTableColumns(auditLog),
+        performedByEmail: users.email,
+        performedByFullName: users.fullName,
+        performedByNickname: users.nickname,
+      })
+      .from(auditLog)
+      .leftJoin(users, eq(auditLog.performedBy, users.id))
+      .where(and(...conditions))
+      .orderBy(desc(auditLog.createdAt))
+      .limit(100);
+  }
+
   async log(params: LogActionParams): Promise<void> {
     try {
       await this.drizzle.db.insert(auditLog).values({

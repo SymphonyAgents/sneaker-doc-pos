@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -14,6 +14,14 @@ export class AuditController {
     private readonly auditService: AuditService,
     private readonly usersService: UsersService,
   ) {}
+
+  @Get('transaction/:txnNumber')
+  async findByTransaction(
+    @Param('txnNumber') txnNumber: string,
+    @Query('auditType') auditType?: string,
+  ) {
+    return this.auditService.findByEntity('transaction', txnNumber, auditType || undefined);
+  }
 
   @Get()
   async findAll(

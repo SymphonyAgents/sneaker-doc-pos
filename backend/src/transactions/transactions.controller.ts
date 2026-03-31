@@ -336,7 +336,8 @@ export class TransactionsController {
   async remove(@Param('id', ParseIntPipe) id: number, @Req() req: AuthedRequest) {
     const txn = await this.transactionsService.findOne(id);
     await this.verifyBranchAccess(req.user.id, txn.branchId);
-    return this.transactionsService.remove(id, req.user?.id);
+    const user = await this.usersService.findById(req.user.id);
+    return this.transactionsService.remove(id, req.user?.id, user?.userType);
   }
 
   // Called by Cloud Scheduler — no Supabase auth, uses CRON_SECRET header

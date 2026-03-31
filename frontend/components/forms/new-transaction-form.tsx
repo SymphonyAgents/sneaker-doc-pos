@@ -519,13 +519,23 @@ export function NewTransactionForm() {
                     </Select>
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-medium text-zinc-700">Reference #</label>
+                    <label className="text-xs font-medium text-zinc-700">
+                      Reference #
+                      {['gcash', 'card', 'bank_deposit'].includes(watchedPaymentMethod) && (
+                        <span className="text-red-500 ml-0.5">*</span>
+                      )}
+                    </label>
                     <input
                       type="text"
                       placeholder="e.g. GCash ref"
                       {...register('paymentReference')}
-                      className="h-9 w-full px-3 py-2 text-sm bg-white border border-zinc-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                      className={`h-9 w-full px-3 py-2 text-sm bg-white border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 ${
+                        errors.paymentReference ? 'border-red-400' : 'border-zinc-200'
+                      }`}
                     />
+                    {errors.paymentReference && (
+                      <p className="text-xs text-red-500">{errors.paymentReference.message}</p>
+                    )}
                   </div>
                 </div>
                 {watchedPaymentMethod === 'card' && (

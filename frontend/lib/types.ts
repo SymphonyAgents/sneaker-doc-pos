@@ -172,6 +172,7 @@ export interface AuditEntry {
   performedBy: string | null;
   performedByEmail: string | null;
   performedByFullName: string | null;
+  performedByNickname: string | null;
   branchId: number | null;
   details: Record<string, unknown> | null;
 }
@@ -236,6 +237,7 @@ export interface TodayCollection {
 export interface DashboardSummary {
   monthly: {
     transactionCount: number;
+    totalPairs: number;
     totalRevenue: string;
     totalPaid: string;
     totalBalance: string;

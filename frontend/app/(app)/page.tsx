@@ -268,19 +268,22 @@ export default function DashboardPage() {
           <div
             className="grid grid-cols-1 sm:grid-cols-[1fr_1.6fr_1fr] gap-3 mb-4"
           >
-            {/* Transactions */}
+            {/* Total Pairs */}
             <Link
               href="/transactions"
               className="bg-white border border-zinc-200 rounded-xl p-5 hover:border-zinc-300 transition-colors duration-150"
             >
               <div className="flex items-center gap-1.5 mb-3">
                 <ReceiptIcon size={13} className="text-zinc-400" />
-                <span className="text-xs font-medium text-zinc-400">Transactions</span>
+                <span className="text-xs font-medium text-zinc-400">Total # of Pairs</span>
               </div>
               {dashboardLoading ? (
                 <div className="h-9 w-12 bg-zinc-200 rounded animate-pulse" />
               ) : (
-                <p className="text-3xl font-semibold text-zinc-950">{monthly?.transactionCount ?? 0}</p>
+                <>
+                  <p className="text-3xl font-semibold text-zinc-950">{monthly?.totalPairs ?? 0}</p>
+                  <p className="text-xs text-zinc-400 mt-1">{monthly?.transactionCount ?? 0} transactions</p>
+                </>
               )}
             </Link>
 
