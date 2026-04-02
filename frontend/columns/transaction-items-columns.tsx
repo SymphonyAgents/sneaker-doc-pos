@@ -43,6 +43,8 @@ interface TransactionItemColumnsOptions {
   loadingItemIds?: Set<number>;
   uploadingItemIds?: Set<string>; // `${itemId}-${type}`
   disableUploadBefore?: boolean;
+  disableClaimItemIds?: Set<number>; // Items where claiming is disabled
+  claimDisableReason?: (itemId: number) => string | undefined; // Reason why claiming is disabled
 }
 
 const ITEM_STATUSES = ITEM_STATUS_VALUES;
@@ -141,7 +143,7 @@ function ImageCell({
   );
 }
 
-export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onUploadClick, onCameraClick, loadingItemIds, uploadingItemIds, disableUploadBefore }: TransactionItemColumnsOptions): ColumnDef<TransactionItem>[] => [
+export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onUploadClick, onCameraClick, loadingItemIds, uploadingItemIds, disableUploadBefore, disableClaimItemIds, claimDisableReason }: TransactionItemColumnsOptions): ColumnDef<TransactionItem>[] => [
   {
     accessorKey: 'shoeDescription',
     header: 'Shoe',
@@ -221,15 +223,22 @@ export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onU
           </SelectTrigger>
           <SelectContent position="popper">
             {ITEM_STATUSES.map((s) => {
-              const disableClaimed = s === ITEM_STATUS.CLAIMED && row.original.status !== ITEM_STATUS.DONE;
+              const disableClaimed = s === ITEM_STATUS.CLAIMED && (
+                row.original.status !== ITEM_STATUS.DONE ||
+                (disableClaimItemIds?.has(row.original.id) ?? false)
+              );
               const disableDone = s === ITEM_STATUS.DONE && row.original.status === ITEM_STATUS.PENDING;
               const isDisabled = disableClaimed || disableDone;
+              const disableReason = isDisabled && s === ITEM_STATUS.CLAIMED
+                ? claimDisableReason?.(row.original.id)
+                : undefined;
               return (
                 <SelectItem
                   key={s}
                   value={s}
                   disabled={isDisabled}
                   className={isDisabled ? 'opacity-40 cursor-not-allowed' : ''}
+                  title={disableReason}
                 >
                   <StatusBadge status={s} />
                 </SelectItem>

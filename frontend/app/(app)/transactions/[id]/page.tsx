@@ -210,6 +210,60 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
     [txn?.photos],
   );
 
+  // Compute which items should have claiming disabled.
+  //
+  // Rules:
+  //   Non-last items  — can claim if (txn-level dump photo OR item-level photo) AND full payment
+  //   Last unclaimed  — MUST have item-level after photo AND full payment
+  //     Reason: dump photo may not include the last shoe; need individual proof it was done.
+  const { disableClaimItemIds, claimDisableReasons } = useMemo(() => {
+    const disabled = new Set<number>();
+    const reasons = new Map<number, string>();
+
+    if (!txn) return { disableClaimItemIds: disabled, claimDisableReasons: reasons };
+
+    const bal = parseFloat(txn.total) - parseFloat(txn.paid);
+    const hasDumpPhoto = hasTransactionAfterPhoto;
+
+    // Items eligible for status → claimed (currently in 'done')
+    const claimableItems = (txn.items ?? []).filter((i) => i.status === 'done');
+    const lastItem = claimableItems.length === 1 ? claimableItems[0] : null;
+
+    claimableItems.forEach((item) => {
+      const hasItemPhoto = !!item.afterImageUrl;
+      const isLast = item.id === lastItem?.id;
+
+      if (isLast) {
+        // Last item: dump photo is NOT sufficient — needs its own item-level photo
+        if (!hasItemPhoto && bal > 0) {
+          disabled.add(item.id);
+          reasons.set(item.id, 'Item photo + full payment required for last item');
+        } else if (!hasItemPhoto) {
+          disabled.add(item.id);
+          reasons.set(item.id, 'Item-level after photo required for last item');
+        } else if (bal > 0) {
+          disabled.add(item.id);
+          reasons.set(item.id, `Full payment required — Balance: ₱${bal.toFixed(2)}`);
+        }
+      } else {
+        // Non-last items: dump photo OR item photo is fine
+        const hasAnyPhoto = hasDumpPhoto || hasItemPhoto;
+        if (!hasAnyPhoto && bal > 0) {
+          disabled.add(item.id);
+          reasons.set(item.id, 'After photo + full payment required');
+        } else if (!hasAnyPhoto) {
+          disabled.add(item.id);
+          reasons.set(item.id, 'After photo required before claiming');
+        } else if (bal > 0) {
+          disabled.add(item.id);
+          reasons.set(item.id, `Full payment required — Balance: ₱${bal.toFixed(2)}`);
+        }
+      }
+    });
+
+    return { disableClaimItemIds: disabled, claimDisableReasons: reasons };
+  }, [txn, hasTransactionAfterPhoto]);
+
   function handleSendPickupSms() {
     if (!txn) return;
     setSmsSending(false);
@@ -261,23 +315,6 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
     () => createTransactionItemColumns({
       onStatusChange: (itemId, status) => {
         const item = txnRef.current?.items?.find((i) => i.id === itemId);
-        const currentTxn = txnRef.current;
-
-        // Block claim early if after photos missing or unpaid balance
-        if (status === 'claimed' && currentTxn) {
-          const hasAfterPhoto =
-            (currentTxn.photos ?? []).some((p) => p.type === 'after') ||
-            !!item?.afterImageUrl;
-          if (!hasAfterPhoto) {
-            toast.error('After photos are required before claiming.');
-            return;
-          }
-          const bal = parseFloat(currentTxn.total) - parseFloat(currentTxn.paid);
-          if (bal > 0) {
-            toast.error(`Full payment required before claiming. Balance: ${formatPeso(bal)}`);
-            return;
-          }
-        }
 
         setPendingItemChange({
           itemId,
@@ -293,8 +330,10 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
       loadingItemIds,
       uploadingItemIds,
       disableUploadBefore: true,
+      disableClaimItemIds,
+      claimDisableReason: (itemId) => claimDisableReasons.get(itemId),
     }),
-    [loadingItemIds, uploadingItemIds, handleUploadClick, handleCameraClick],
+    [loadingItemIds, uploadingItemIds, handleUploadClick, handleCameraClick, disableClaimItemIds, claimDisableReasons],
   );
   const addPaymentMut = useAddPaymentMutation(id, () => {
     setPaymentDialogOpen(false);
