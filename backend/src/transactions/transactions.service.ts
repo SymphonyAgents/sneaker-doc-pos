@@ -1149,18 +1149,45 @@ export class TransactionsService {
 
     // Validate BEFORE writing — guards must run before any DB mutation
     if (dto.status && dto.status !== existing.status && dto.status === 'claimed') {
-      // Block claim if no after photos exist (transaction-level or item-level)
-      const hasAfterPhoto =
-        (txn.photos ?? []).some((p) => p.type === 'after') ||
-        !!existing.afterImageUrl;
-      if (!hasAfterPhoto) {
-        throw new BadRequestException('After photos are required before claiming.');
-      }
+      // Determine if this is a multi-item transaction and if the current item is the last one.
+      // Rules (mirrors frontend logic):
+      //   Single item txn      — needs after photo AND full payment
+      //   Multi-item, non-last — needs after photo only (no payment check)
+      //   Multi-item, last     — needs item-level after photo AND full payment
+      const allActiveItems = (txn.items ?? [])
+        .filter((i) => i.status !== 'cancelled')
+        .sort((a, b) => a.id - b.id);
+      const isMultiItem = allActiveItems.length > 1;
+      const lastActiveItem = allActiveItems[allActiveItems.length - 1];
+      const isLastItem = isMultiItem && itemId === lastActiveItem?.id;
 
-      // Block claim if there is any unpaid balance
-      if (txn.total > txn.paid) {
-        const bal = fromScaled(txn.total - txn.paid);
-        throw new BadRequestException(`Full payment is required before claiming. Outstanding balance: ₱${bal}`);
+      // Photo check
+      const hasDumpPhoto = (txn.photos ?? []).some((p) => p.type === 'after');
+      const hasItemPhoto = !!existing.afterImageUrl;
+
+      if (isMultiItem && !isLastItem) {
+        // Non-last in multi-item: only needs any after photo (dump or item-level)
+        if (!hasDumpPhoto && !hasItemPhoto) {
+          throw new BadRequestException('After photo is required before claiming.');
+        }
+      } else if (isLastItem) {
+        // Last item in multi-item: needs item-level photo + full payment
+        if (!hasItemPhoto) {
+          throw new BadRequestException('Item-level after photo is required for the last item.');
+        }
+        const bal = txn.total - txn.paid;
+        if (bal > 0.001) {
+          throw new BadRequestException(`Full payment is required before claiming the last item. Outstanding balance: ₱${bal.toFixed(2)}`);
+        }
+      } else {
+        // Single item: needs any after photo + full payment
+        if (!hasDumpPhoto && !hasItemPhoto) {
+          throw new BadRequestException('After photo is required before claiming.');
+        }
+        const bal = txn.total - txn.paid;
+        if (bal > 0.001) {
+          throw new BadRequestException(`Full payment is required before claiming. Outstanding balance: ₱${bal.toFixed(2)}`);
+        }
       }
     }
 
