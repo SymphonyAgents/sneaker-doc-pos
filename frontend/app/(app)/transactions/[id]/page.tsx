@@ -231,7 +231,11 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
 
     // All non-cancelled items determine whether this is a multi-item transaction
     // and which item is the "last" one to be claimed.
-    const allActiveItems = (txn.items ?? []).filter((i) => i.status !== 'cancelled');
+    // Sort by ID ascending so the "last" item is always the one added last (highest ID),
+    // regardless of the order the backend returns them (no ORDER BY on the DB query).
+    const allActiveItems = (txn.items ?? [])
+      .filter((i) => i.status !== 'cancelled')
+      .sort((a, b) => a.id - b.id);
     const isMultiItem = allActiveItems.length > 1;
     const lastActiveItem = allActiveItems[allActiveItems.length - 1];
 
