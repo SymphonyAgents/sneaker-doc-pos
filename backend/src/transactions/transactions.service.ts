@@ -116,7 +116,14 @@ export class TransactionsService {
     }
 
     const rows = await this.drizzle.db
-      .select()
+      .select({
+        ...getTableColumns(transactions),
+        itemCount: sql<number>`(
+          SELECT COUNT(*)::int FROM transaction_items ti
+          WHERE ti.transaction_id = ${transactions.id}
+            AND ti.status != 'cancelled'
+        )`,
+      })
       .from(transactions)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(transactions.createdAt))

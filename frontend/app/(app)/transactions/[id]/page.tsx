@@ -30,6 +30,7 @@ import {
 import { createTransactionItemColumns } from '@/columns/transaction-items-columns';
 import {
   useTransactionDetailQuery,
+  useTransactionAuditQuery,
   useUpdateTransactionMutation,
   useUpdateItemStatusMutation,
   useEditTransactionMutation,
@@ -115,6 +116,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const [promoSelected, setPromoSelected] = useState('none');
 
   const { data: txn, isLoading, isFetching } = useTransactionDetailQuery(id);
+  const { data: auditLog = [] } = useTransactionAuditQuery(txn?.number ?? '');
   const updateTxnMut = useUpdateTransactionMutation(id);
   const deleteTxnMut = useDeleteTransactionMutation(() => router.replace('/transactions'));
   const restoreTxnMut = useRestoreTransactionMutation(() => router.replace('/transactions'));
@@ -938,6 +940,49 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
           {/* Payment history + SMS history (tabbed) */}
           <PaymentHistoryCard txn={txn} />
 
+          {/* Text Log — audit trail for this transaction */}
+          {auditLog.length > 0 && (
+            <div className="bg-white border border-zinc-200 rounded-lg p-5">
+              <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-3">
+                Text Log
+              </h2>
+              <ul className="space-y-2">
+                {auditLog.map((entry) => {
+                  const actor = entry.performedByNickname
+                    ? entry.performedByNickname
+                    : entry.performedByFullName
+                      ? entry.performedByFullName
+                      : entry.performedByEmail ?? 'System';
+                  const timestamp = formatDatetime(entry.createdAt);
+                  const action = entry.auditType
+                    ? entry.auditType.replace(/_/g, ' ')
+                    : entry.action.replace(/_/g, ' ');
+                  const details = entry.details;
+                  return (
+                    <li key={entry.id} className="flex gap-2 text-xs leading-snug">
+                      <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-zinc-300 mt-1.5" />
+                      <div className="min-w-0">
+                        <span className="font-medium text-zinc-700 capitalize">{action}</span>
+                        {details && Object.keys(details).length > 0 && (
+                          <span className="text-zinc-500">
+                            {' — '}
+                            {Object.entries(details)
+                              .filter(([, v]) => v !== null && v !== undefined && v !== '')
+                              .slice(0, 3)
+                              .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`)
+                              .join(', ')}
+                          </span>
+                        )}
+                        <span className="block text-zinc-400 mt-0.5">
+                          {toTitleCase(actor)} · {timestamp}
+                        </span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
 
           {/* Assigned Staff — all roles can assign */}
           {assignableUsers.length > 0 && (

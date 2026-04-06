@@ -45,7 +45,19 @@ export const createTransactionColumns = ({ onDelete, isSuperadmin, branchesMap }
   {
     accessorKey: 'status',
     header: 'Status',
-    cell: ({ row }) => <StatusBadge status={row.original.status} />,
+    cell: ({ row }) => {
+      const count = row.original.itemCount;
+      return (
+        <div className="flex flex-col gap-0.5">
+          <StatusBadge status={row.original.status} />
+          {count != null && count > 0 && (
+            <span className="text-[11px] text-zinc-400 leading-none">
+              {count} {count === 1 ? 'pair' : 'pairs'}
+            </span>
+          )}
+        </div>
+      );
+    },
   },
   ...(isSuperadmin ? [{
     id: 'branch',

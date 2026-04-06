@@ -191,9 +191,10 @@ export default function ExpensesPage() {
       onDelete: setDeleteTarget,
       onStartEdit: isAdmin && activeTab === 'main' ? openEdit : undefined,
       isAdmin,
+      showDate: viewMode === 'monthly',
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isAdmin, activeTab],
+    [isAdmin, activeTab, viewMode],
   );
 
   return (

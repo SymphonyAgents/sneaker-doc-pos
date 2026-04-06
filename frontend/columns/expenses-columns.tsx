@@ -18,13 +18,29 @@ interface ExpenseColumnsOptions {
   onDelete: (expense: Expense) => void;
   onStartEdit?: (e: Expense) => void;
   isAdmin?: boolean;
+  showDate?: boolean;
+}
+
+function formatDateKey(dateKey: string): string {
+  if (!dateKey) return '—';
+  const [year, month, day] = dateKey.split('-');
+  const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+  return date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 export const createExpenseColumns = ({
   onDelete,
   onStartEdit,
   isAdmin,
+  showDate,
 }: ExpenseColumnsOptions): ColumnDef<Expense>[] => [
+  ...(showDate ? [{
+    accessorKey: 'dateKey',
+    header: 'Date',
+    cell: ({ row }: { row: { original: Expense } }) => (
+      <span className="text-sm text-zinc-500 whitespace-nowrap">{formatDateKey(row.original.dateKey)}</span>
+    ),
+  } as ColumnDef<Expense>] : []),
   {
     accessorKey: 'category',
     header: 'Category',

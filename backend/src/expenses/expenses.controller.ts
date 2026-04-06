@@ -43,18 +43,17 @@ export class ExpensesController {
   @Get()
   async findByDate(@Query('date') date: string, @Req() req: AuthedRequest) {
     const dbUser = await this.usersService.findById(req.user.id) as { userType: string; branchId?: number | null } | null;
-    const isStaff = dbUser?.userType === 'staff';
     const branchId = this.scopedBranchId(dbUser);
-    return this.expensesService.findByDate(date, isStaff ? req.user.id : undefined, isStaff ? undefined : branchId);
+    // All roles see expenses scoped to their branch (staff see full branch, not just their own)
+    return this.expensesService.findByDate(date, undefined, branchId);
   }
 
   @UseGuards(SupabaseAuthGuard)
   @Get('summary')
   async summary(@Query('date') date: string, @Req() req: AuthedRequest) {
     const dbUser = await this.usersService.findById(req.user.id) as { userType: string; branchId?: number | null } | null;
-    const isStaff = dbUser?.userType === 'staff';
     const branchId = this.scopedBranchId(dbUser);
-    return this.expensesService.summary(date, isStaff ? req.user.id : undefined, isStaff ? undefined : branchId);
+    return this.expensesService.summary(date, undefined, branchId);
   }
 
   @UseGuards(SupabaseAuthGuard)
@@ -65,14 +64,13 @@ export class ExpensesController {
     @Query('month') month: string,
   ) {
     const dbUser = await this.usersService.findById(req.user.id) as { userType: string; branchId?: number | null } | null;
-    const isStaff = dbUser?.userType === 'staff';
     const branchId = this.scopedBranchId(dbUser);
-    // Staff see only their own expenses for the month
+    // All roles see expenses scoped to their branch (staff see full branch, not just their own)
     return this.expensesService.findByMonth(
       parseInt(year, 10),
       parseInt(month, 10),
-      isStaff ? undefined : branchId,
-      isStaff ? req.user.id : undefined,
+      branchId,
+      undefined,
     );
   }
 

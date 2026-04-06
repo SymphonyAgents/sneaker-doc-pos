@@ -414,7 +414,7 @@ export default function DashboardPage() {
       {!isAdmin && (
         <div className="grid grid-cols-2 gap-3 md:gap-4 mb-6 md:mb-8">
           <StatCard
-            label="Transactions Today"
+            label="No. of Pairs Today"
             href="/transactions"
             value={String(daily?.count ?? 0)}
             loading={dashboardLoading}

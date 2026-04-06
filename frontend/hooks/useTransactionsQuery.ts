@@ -80,6 +80,15 @@ export function useUpcomingByMonthQuery(year: number, month: number) {
   });
 }
 
+export function useTransactionAuditQuery(txnNumber: string) {
+  return useQuery({
+    queryKey: ['transaction-audit', txnNumber],
+    queryFn: () => api.audit.findByTransaction(txnNumber),
+    enabled: !!txnNumber,
+    staleTime: 30 * 1000, // 30s — audit log changes infrequently
+  });
+}
+
 export function useTransactionDetailQuery(id: string) {
   const numericId = parseInt(id, 10);
   const qc = useQueryClient();
