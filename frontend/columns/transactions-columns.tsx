@@ -48,7 +48,7 @@ export const createTransactionColumns = ({ onDelete, isSuperadmin, branchesMap }
     cell: ({ row }) => {
       const count = row.original.itemCount;
       return (
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5 items-start">
           <StatusBadge status={row.original.status} />
           {count != null && count > 0 && (
             <span className="text-[11px] text-zinc-400 leading-none">
