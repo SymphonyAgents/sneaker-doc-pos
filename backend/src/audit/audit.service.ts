@@ -56,13 +56,16 @@ export class AuditService {
       .limit(limit);
   }
 
-  async findByEntity(entityType: string, entityId: string, auditType?: string) {
+  async findByEntity(entityType: string, entityId: string, auditType?: string, branchId?: number) {
     const conditions: ReturnType<typeof eq>[] = [
       eq(auditLog.entityType, entityType),
       eq(auditLog.entityId, entityId),
     ];
     if (auditType) {
       conditions.push(eq(auditLog.auditType, auditType));
+    }
+    if (branchId) {
+      conditions.push(eq(auditLog.branchId, branchId) as ReturnType<typeof eq>);
     }
     return this.drizzle.db
       .select({

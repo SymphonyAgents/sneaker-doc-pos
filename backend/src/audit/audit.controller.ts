@@ -8,22 +8,33 @@ import { UsersService } from '../users/users.service';
 
 @Controller('audit')
 @UseGuards(SupabaseAuthGuard, RolesGuard)
-@Roles('admin', 'superadmin')
 export class AuditController {
   constructor(
     private readonly auditService: AuditService,
     private readonly usersService: UsersService,
   ) {}
 
+  // All roles can view SMS logs for a transaction — scoped to their branch for staff
   @Get('transaction/:txnNumber')
+  @Roles('staff', 'admin', 'superadmin')
   async findByTransaction(
+    @Req() req: AuthedRequest,
     @Param('txnNumber') txnNumber: string,
     @Query('auditType') auditType?: string,
   ) {
-    return this.auditService.findByEntity('transaction', txnNumber, auditType || undefined);
+    const currentUser = await this.usersService.findById(req.user.id);
+    // staff: only sees audit logs for their own branch; admin/superadmin: unrestricted
+    const branchId =
+      currentUser?.userType === 'staff'
+        ? (currentUser?.branchId ?? undefined)
+        : undefined;
+
+    return this.auditService.findByEntity('transaction', txnNumber, auditType || undefined, branchId);
   }
 
+  // Full audit log page — admin and superadmin only
   @Get()
+  @Roles('admin', 'superadmin')
   async findAll(
     @Req() req: AuthedRequest,
     @Query('limit') limit?: string,
