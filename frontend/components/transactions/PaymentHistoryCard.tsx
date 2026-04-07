@@ -60,23 +60,25 @@ export function PaymentHistoryCard({ txn }: PaymentHistoryCardProps) {
           ) : smsLogs.length === 0 ? (
             <p className="text-xs text-zinc-400">No SMS sent for this transaction.</p>
           ) : (
-            smsLogs.map((log) => (
-              <div key={log.id} className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-zinc-700">
-                    SMS Sent
-                  </p>
-                  <p className="text-xs text-zinc-400">
-                    {formatDatetime(log.createdAt)}
-                    {(log.performedByNickname || log.performedByFullName) && (
-                      <span className="ml-1.5">
-                        by {toTitleCase(log.performedByNickname ?? log.performedByFullName ?? '')}
-                      </span>
-                    )}
-                  </p>
+            smsLogs.map((log) => {
+              const phone = (log.details?.customerPhone as string | null | undefined)
+                ?? txn.customerPhone
+                ?? '—';
+              const sentBy = log.performedByNickname
+                ?? log.performedByFullName
+                ?? (log.details?.sentByFullName as string | null | undefined)
+                ?? log.performedByEmail
+                ?? 'Staff';
+              return (
+                <div key={log.id} className="text-xs text-zinc-700 leading-relaxed">
+                  <span className="font-medium">SMS sent</span>
+                  {' '}to <span className="font-mono text-zinc-900">{phone}</span>
+                  <span className="block text-zinc-400 mt-0.5">
+                    {formatDatetime(log.createdAt)} · by {toTitleCase(sentBy)}
+                  </span>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       )}
