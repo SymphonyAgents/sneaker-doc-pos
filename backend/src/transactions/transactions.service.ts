@@ -1161,8 +1161,13 @@ export class TransactionsService {
       //   Single item txn      — needs after photo AND full payment
       //   Multi-item, non-last — needs after photo only (no payment check)
       //   Multi-item, last     — needs item-level after photo AND full payment
+      //
+      // IMPORTANT: exclude 'claimed' items in addition to 'cancelled'. Once prior items are
+      // claimed, only the remaining unclaimed items determine isMultiItem and lastActiveItem.
+      // Without this, if item1 is claimed and item2 is done, item2 is still counted as
+      // "last in a 2-item txn" and incorrectly requires an item-level photo.
       const allActiveItems = (txn.items ?? [])
-        .filter((i) => i.status !== 'cancelled')
+        .filter((i) => i.status !== 'cancelled' && i.status !== 'claimed')
         .sort((a, b) => a.id - b.id);
       const isMultiItem = allActiveItems.length > 1;
       const lastActiveItem = allActiveItems[allActiveItems.length - 1];

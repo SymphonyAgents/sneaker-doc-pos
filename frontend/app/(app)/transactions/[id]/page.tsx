@@ -231,12 +231,15 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
     const bal = parseFloat(txn.total) - parseFloat(txn.paid);
     const hasDumpPhoto = hasTransactionAfterPhoto;
 
-    // All non-cancelled items determine whether this is a multi-item transaction
-    // and which item is the "last" one to be claimed.
+    // "Active" items = non-cancelled AND not yet claimed.
+    // Excluding claimed items is critical: once item1 is claimed and item2 is done,
+    // item2 is the only remaining item and should be treated as a single-item txn
+    // (accepts dump photos + requires payment). If we kept claimed items in the set,
+    // item2 would still be "last in a multi-item txn" and require an item-level photo.
     // Sort by ID ascending so the "last" item is always the one added last (highest ID),
     // regardless of the order the backend returns them (no ORDER BY on the DB query).
     const allActiveItems = (txn.items ?? [])
-      .filter((i) => i.status !== 'cancelled')
+      .filter((i) => i.status !== 'cancelled' && i.status !== 'claimed')
       .sort((a, b) => a.id - b.id);
     const isMultiItem = allActiveItems.length > 1;
     const lastActiveItem = allActiveItems[allActiveItems.length - 1];
