@@ -66,11 +66,16 @@ export class AuditService {
     const conditions: ReturnType<typeof eq>[] = [
       transactionNumber
         ? (or(
-            eq(auditLog.entityId, entityId),
+            and(
+              eq(auditLog.entityType, entityType),
+              eq(auditLog.entityId, entityId),
+            ),
             sql`${auditLog.details}->>'transactionNumber' = ${transactionNumber}`,
           ) as ReturnType<typeof eq>)
-        : eq(auditLog.entityId, entityId),
-      eq(auditLog.entityType, entityType),
+        : (and(
+            eq(auditLog.entityType, entityType),
+            eq(auditLog.entityId, entityId),
+          ) as ReturnType<typeof eq>),
     ];
     if (auditType) {
       conditions.push(eq(auditLog.auditType, auditType));
