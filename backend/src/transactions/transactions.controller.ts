@@ -234,6 +234,19 @@ export class TransactionsController {
     return this.transactionsService.updateItem(id, itemId, dto, req.user?.id);
   }
 
+  @UseGuards(SupabaseAuthGuard, RolesGuard)
+  @Roles('staff', 'admin', 'superadmin')
+  @Post(':id/items/:itemId/revert')
+  async revertItem(
+    @Req() req: AuthedRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('itemId', ParseIntPipe) itemId: number,
+  ) {
+    const txn = await this.transactionsService.findOne(id);
+    await this.verifyBranchAccess(req.user.id, txn.branchId);
+    return this.transactionsService.revertItem(id, itemId, req.user?.id);
+  }
+
   @UseGuards(SupabaseAuthGuard)
   @Post(':id/payments')
   async addPayment(

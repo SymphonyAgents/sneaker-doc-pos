@@ -27,17 +27,18 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { createTransactionItemColumns } from '@/columns/transaction-items-columns';
+import { createTransactionItemColumns, type RevertAuditEntry } from '@/columns/transaction-items-columns';
 import {
   useTransactionDetailQuery,
   useUpdateTransactionMutation,
   useUpdateItemStatusMutation,
   useEditTransactionMutation,
   useAddPaymentMutation,
-
   useDeleteTransactionMutation,
   useRestoreTransactionMutation,
+  useRevertItemMutation,
 } from '@/hooks/useTransactionsQuery';
+import { useTransactionAuditQuery } from '@/hooks/useAuditQuery';
 import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
 import { useUploadPhotoMutation, useUploadTxnPhotoMutation } from '@/hooks/useUploadPhoto';
 import { useAssignableUsersQuery } from '@/hooks/useUsersQuery';
@@ -122,6 +123,36 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const editTxnMut = useEditTransactionMutation(id, () => setEditTxnOpen(false));
   const uploadPhotoMut = useUploadPhotoMutation(id);
   const uploadTxnPhotoMut = useUploadTxnPhotoMutation(id);
+
+  const revertItemMut = useRevertItemMutation(txn?.id ?? 0);
+  const [pendingRevert, setPendingRevert] = useState<{ itemId: number; shoeDescription: string } | null>(null);
+
+  // Fetch revert audit entries to show revert indicator on items
+  const { data: revertLogs = [] } = useTransactionAuditQuery(txn?.number ?? '', 'ITEM_STATUS_REVERTED');
+  const revertAuditMap = useMemo(() => {
+    const map = new Map<number, RevertAuditEntry>();
+    for (const log of revertLogs) {
+      const details = log.details as Record<string, unknown>;
+      const itemId = Number(log.entityId);
+      if (!itemId) continue;
+      // Last revert per item wins
+      if (!map.has(itemId)) {
+        map.set(itemId, {
+          from: String(details?.from ?? 'cancelled'),
+          to: String(details?.to ?? 'pending'),
+          performedBy: toTitleCase(
+            (log.performedByNickname ?? log.performedByFullName ?? log.performedByEmail ?? 'Admin') as string
+          ),
+          date: new Date(log.createdAt).toLocaleDateString('en-PH', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          }),
+        });
+      }
+    }
+    return map;
+  }, [revertLogs]);
 
   const [loadingItemIds, setLoadingItemIds] = useState<Set<number>>(new Set());
   const [pendingItemChange, setPendingItemChange] = useState<PendingItemChange | null>(null);
@@ -355,8 +386,10 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
       disableUploadBefore: true,
       disableClaimItemIds,
       claimDisableReason: (itemId) => claimDisableReasons.get(itemId),
+      onRevert: (itemId, shoeDescription) => setPendingRevert({ itemId, shoeDescription }),
+      revertAuditMap,
     }),
-    [loadingItemIds, uploadingItemIds, handleUploadClick, handleCameraClick, disableClaimItemIds, claimDisableReasons],
+    [loadingItemIds, uploadingItemIds, handleUploadClick, handleCameraClick, disableClaimItemIds, claimDisableReasons, revertAuditMap],
   );
   const addPaymentMut = useAddPaymentMutation(id, () => {
     setPaymentDialogOpen(false);
@@ -1183,6 +1216,43 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
         }}
         onCancel={() => setPendingItemChange(null)}
       />
+
+      {/* Revert cancelled item confirmation */}
+      <Dialog open={!!pendingRevert} onOpenChange={(open) => { if (!open) setPendingRevert(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Revert Cancelled Item?</DialogTitle>
+            <DialogDescription>
+              This will restore{' '}
+              <span className="font-semibold text-zinc-900">{pendingRevert?.shoeDescription}</span>
+              {' '}to its previous status and void the refund expense. This action is audited.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 mt-2">
+            <Button variant="ghost" onClick={() => setPendingRevert(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="dark"
+              disabled={revertItemMut.isPending}
+              onClick={() => {
+                if (!pendingRevert) return;
+                revertItemMut.mutate(pendingRevert.itemId, {
+                  onSuccess: () => {
+                    toast.success(`Reverted: ${pendingRevert.shoeDescription}`);
+                    setPendingRevert(null);
+                  },
+                  onError: (err) => {
+                    toast.error(err instanceof Error ? err.message : 'Failed to revert item');
+                  },
+                });
+              }}
+            >
+              {revertItemMut.isPending ? 'Reverting…' : 'Revert'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <ConfirmDialog
         open={rescheduleConfirmOpen}

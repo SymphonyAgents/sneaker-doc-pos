@@ -281,3 +281,16 @@ export function useRestoreTransactionMutation(onSuccess?: () => void) {
     onError: (err: Error) => toast.error('Failed to restore transaction', { description: err.message }),
   });
 }
+
+
+export function useRevertItemMutation(txnId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (itemId: number) => api.transactions.revertItem(txnId, itemId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: TRANSACTIONS_KEY });
+      qc.invalidateQueries({ queryKey: transactionDetailKey(String(txnId)) });
+    },
+    onError: (err: Error) => toast.error('Failed to revert item', { description: err.message }),
+  });
+}

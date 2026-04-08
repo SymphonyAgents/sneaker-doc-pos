@@ -32,6 +32,7 @@ import {
   branches,
   deposits,
   expenses,
+  auditLog,
   users as usersTable, // alias to avoid conflict with this.users (UsersService)
 } from '../db/schema';
 import {
@@ -1071,7 +1072,7 @@ export class TransactionsService {
       .select()
       .from(transactions)
       .where(eq(transactions.id, transactionId));
-    if (!txn || txn.status === 'cancelled') return;
+    if (!txn) return;
 
     const items = await this.drizzle.db
       .select()
@@ -1280,6 +1281,109 @@ export class TransactionsService {
       // Auto-sync parent transaction status
       await this.syncTransactionStatus(transactionId);
     }
+
+    return updated;
+  }
+
+  async revertItem(
+    transactionId: number,
+    itemId: number,
+    performedBy?: string,
+  ) {
+    const txn = await this.findOne(transactionId);
+
+    const [existing] = await this.drizzle.db
+      .select()
+      .from(transactionItems)
+      .where(eq(transactionItems.id, itemId));
+
+    if (!existing) throw new NotFoundException(`Item ${itemId} not found`);
+    if (existing.status !== 'cancelled') {
+      throw new BadRequestException('Only cancelled items can be reverted.');
+    }
+
+    // 1. Find previous status from audit log (look for ITEM_STATUS_CHANGED with to=cancelled)
+    const auditEntries = await this.drizzle.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.entityType, 'transaction_item'),
+          eq(auditLog.entityId, String(itemId)),
+          eq(auditLog.auditType, AUDIT_TYPE.ITEM_STATUS_CHANGED),
+        ),
+      )
+      .orderBy(desc(auditLog.createdAt))
+      .limit(10);
+
+    const cancelEntry = auditEntries.find(
+      (e) => (e.details as Record<string, unknown>)?.to === 'cancelled',
+    );
+    const previousStatus =
+      ((cancelEntry?.details as Record<string, unknown>)?.from as string) ?? 'pending';
+
+    // 2. Find and soft-delete the auto-created refund expense
+    let revertedExpenseId: number | null = null;
+    let refundAmountVoided: string | null = null;
+
+    if (existing.price !== null && existing.price > 0) {
+      const notePattern = `Refund — Txn #${txn.number} — ${existing.shoeDescription || 'Item'}`;
+      const [refundExpense] = await this.drizzle.db
+        .select()
+        .from(expenses)
+        .where(
+          and(
+            eq(expenses.category, 'Refund'),
+            eq(expenses.source, 'system'),
+            eq(expenses.note, notePattern),
+            isNull(expenses.deletedAt),
+          ),
+        )
+        .orderBy(desc(expenses.createdAt))
+        .limit(1);
+
+      if (refundExpense) {
+        await this.drizzle.db
+          .update(expenses)
+          .set({ deletedAt: new Date() })
+          .where(eq(expenses.id, refundExpense.id));
+        revertedExpenseId = refundExpense.id;
+        refundAmountVoided = fromScaled(refundExpense.amount);
+      }
+    }
+
+    // 3. Update item status back to previous
+    const [updated] = await this.drizzle.db
+      .update(transactionItems)
+      .set({ status: previousStatus })
+      .where(eq(transactionItems.id, itemId))
+      .returning();
+
+    // 4. Audit log the revert
+    const branchId = performedBy
+      ? await this.users.getBranchId(performedBy)
+      : null;
+
+    await this.audit.log({
+      action: 'revert',
+      auditType: AUDIT_TYPE.ITEM_STATUS_REVERTED,
+      entityType: 'transaction_item',
+      entityId: String(itemId),
+      source: 'pos',
+      performedBy,
+      branchId: branchId ?? undefined,
+      details: {
+        transactionNumber: txn.number,
+        from: 'cancelled',
+        to: previousStatus,
+        shoe: existing.shoeDescription,
+        ...(revertedExpenseId ? { revertedRefundExpenseId: revertedExpenseId } : {}),
+        ...(refundAmountVoided !== null ? { refundAmountVoided } : {}),
+      },
+    });
+
+    // 5. Re-sync parent transaction total and status
+    await this.syncTransactionStatus(transactionId);
 
     return updated;
   }

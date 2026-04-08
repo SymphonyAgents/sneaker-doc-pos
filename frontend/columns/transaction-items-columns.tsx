@@ -35,6 +35,13 @@ function StatusLoadingPill({ status }: { status: string }) {
   );
 }
 
+export interface RevertAuditEntry {
+  from: string;
+  to: string;
+  performedBy: string;
+  date: string;
+}
+
 interface TransactionItemColumnsOptions {
   onStatusChange: (itemId: number, status: ItemStatus) => void;
   onImageClick?: (url: string, label: string) => void;
@@ -45,6 +52,8 @@ interface TransactionItemColumnsOptions {
   disableUploadBefore?: boolean;
   disableClaimItemIds?: Set<number>; // Items where claiming is disabled
   claimDisableReason?: (itemId: number) => string | undefined; // Reason why claiming is disabled
+  onRevert?: (itemId: number, shoeDescription: string) => void;
+  revertAuditMap?: Map<number, RevertAuditEntry>;
 }
 
 const ITEM_STATUSES = ITEM_STATUS_VALUES;
@@ -143,13 +152,14 @@ function ImageCell({
   );
 }
 
-export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onUploadClick, onCameraClick, loadingItemIds, uploadingItemIds, disableUploadBefore, disableClaimItemIds, claimDisableReason }: TransactionItemColumnsOptions): ColumnDef<TransactionItem>[] => [
+export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onUploadClick, onCameraClick, loadingItemIds, uploadingItemIds, disableUploadBefore, disableClaimItemIds, claimDisableReason, onRevert, revertAuditMap }: TransactionItemColumnsOptions): ColumnDef<TransactionItem>[] => [
   {
     accessorKey: 'shoeDescription',
     header: 'Shoe',
     cell: ({ row }) => {
       const { shoeDescription, status, price } = row.original;
       const isCancelled = status === ITEM_STATUS.CANCELLED;
+      const revertInfo = revertAuditMap?.get(row.original.id);
       return (
         <div>
           <span className={isCancelled ? 'text-zinc-400 line-through' : 'text-zinc-950'}>
@@ -158,6 +168,11 @@ export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onU
           {isCancelled && price && (
             <span className="block text-[10px] text-red-400 mt-0.5">
               Refunded {formatPeso(price)}
+            </span>
+          )}
+          {revertInfo && (
+            <span className="block text-[10px] text-blue-500 mt-0.5">
+              Reverted: {revertInfo.from} → {revertInfo.to} · by {revertInfo.performedBy} · {revertInfo.date}
             </span>
           )}
         </div>
@@ -208,7 +223,20 @@ export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onU
       }
 
       if (locked) {
-        return <StatusBadge status={row.original.status} />;
+        return (
+          <div className="flex items-center gap-1.5">
+            <StatusBadge status={row.original.status} />
+            {row.original.status === ITEM_STATUS.CANCELLED && onRevert && (
+              <button
+                type="button"
+                onClick={() => onRevert(row.original.id, row.original.shoeDescription ?? '')}
+                className="text-[10px] text-blue-500 hover:text-blue-700 underline underline-offset-2 whitespace-nowrap"
+              >
+                Revert
+              </button>
+            )}
+          </div>
+        );
       }
 
       return (

@@ -94,6 +94,10 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify(body),
       }),
+    revertItem: (txnId: number, itemId: number) =>
+      apiFetch<TransactionItem>(`/transactions/${txnId}/items/${itemId}/revert`, {
+        method: 'POST',
+      }),
     edit: (id: number, body: {
       items?: Array<{ id: number; shoeDescription?: string; serviceId?: number }>;
       payments?: Array<{ id: number; method: string; referenceNumber?: string; cardBank?: string }>;
