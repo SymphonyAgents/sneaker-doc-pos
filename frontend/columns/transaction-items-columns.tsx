@@ -165,14 +165,14 @@ export const createTransactionItemColumns = ({ onStatusChange, onImageClick, onU
           <span className={isCancelled ? 'text-zinc-400 line-through' : 'text-zinc-950'}>
             {toTitleCase(shoeDescription) || '—'}
           </span>
-          {isCancelled && price && (
+          {isCancelled && price && !revertInfo && (
             <span className="block text-[10px] text-red-400 mt-0.5">
               Refunded {formatPeso(price)}
             </span>
           )}
           {revertInfo && (
             <span className="block text-[10px] text-blue-500 mt-0.5">
-              Reverted: {revertInfo.from} → {revertInfo.to} · by {revertInfo.performedBy} · {revertInfo.date}
+              Reverted from {revertInfo.from} to {revertInfo.to} by {revertInfo.performedBy} on {revertInfo.date}
             </span>
           )}
         </div>

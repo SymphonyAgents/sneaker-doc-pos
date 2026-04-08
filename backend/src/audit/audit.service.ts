@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { and, desc, eq, gte, getTableColumns, lte } from 'drizzle-orm';
+import { and, desc, eq, gte, getTableColumns, lte, or, sql } from 'drizzle-orm';
 import { DrizzleService } from '../db/drizzle.service';
 import { auditLog, users } from '../db/schema';
 import type { AuditType } from '../db/constants';
@@ -56,10 +56,21 @@ export class AuditService {
       .limit(limit);
   }
 
-  async findByEntity(entityType: string, entityId: string, auditType?: string, branchId?: number) {
+  async findByEntity(
+    entityType: string,
+    entityId: string,
+    auditType?: string,
+    branchId?: number,
+    transactionNumber?: string,
+  ) {
     const conditions: ReturnType<typeof eq>[] = [
+      transactionNumber
+        ? (or(
+            eq(auditLog.entityId, entityId),
+            sql`${auditLog.details}->>'transactionNumber' = ${transactionNumber}`,
+          ) as ReturnType<typeof eq>)
+        : eq(auditLog.entityId, entityId),
       eq(auditLog.entityType, entityType),
-      eq(auditLog.entityId, entityId),
     ];
     if (auditType) {
       conditions.push(eq(auditLog.auditType, auditType));

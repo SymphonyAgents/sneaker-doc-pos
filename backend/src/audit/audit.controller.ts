@@ -29,7 +29,13 @@ export class AuditController {
         ? (currentUser?.branchId ?? undefined)
         : undefined;
 
-    return this.auditService.findByEntity('transaction', txnNumber, auditType || undefined, branchId);
+    return this.auditService.findByEntity(
+      'transaction',
+      txnNumber,
+      auditType || undefined,
+      branchId,
+      txnNumber,
+    );
   }
 
   // Full audit log page — admin and superadmin only

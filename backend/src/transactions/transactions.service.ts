@@ -1080,7 +1080,6 @@ export class TransactionsService {
       .where(eq(transactionItems.transactionId, transactionId));
 
     const nonCancelled = items.filter((i) => i.status !== 'cancelled');
-    const cancelled = items.filter((i) => i.status === 'cancelled');
 
     // All items cancelled → cancel the transaction
     if (nonCancelled.length === 0) {
@@ -1091,23 +1090,26 @@ export class TransactionsService {
       return;
     }
 
-    // Some items cancelled → recalculate total from non-cancelled item prices
-    if (cancelled.length > 0) {
-      const rawSubtotalScaled = nonCancelled.reduce(
-        (sum, i) => sum + (i.price ?? 0),
-        0,
-      );
-      let newTotalScaled = rawSubtotalScaled;
-      if (txn.promoId) {
-        const [promo] = await this.drizzle.db
-          .select()
-          .from(promos)
-          .where(eq(promos.id, txn.promoId));
-        if (promo) {
-          const discountFactor = 1 - parseFloat(promo.percent) / 100;
-          newTotalScaled = Math.round(rawSubtotalScaled * discountFactor);
-        }
+    // Always recalculate total from all non-cancelled items.
+    // This is required for BOTH cancellation and revert flows:
+    // - cancelling an item removes its price from total
+    // - reverting an item adds its price back to total
+    const rawSubtotalScaled = nonCancelled.reduce(
+      (sum, i) => sum + (i.price ?? 0),
+      0,
+    );
+    let newTotalScaled = rawSubtotalScaled;
+    if (txn.promoId) {
+      const [promo] = await this.drizzle.db
+        .select()
+        .from(promos)
+        .where(eq(promos.id, txn.promoId));
+      if (promo) {
+        const discountFactor = 1 - parseFloat(promo.percent) / 100;
+        newTotalScaled = Math.round(rawSubtotalScaled * discountFactor);
       }
+    }
+    if (newTotalScaled !== txn.total) {
       await this.drizzle.db
         .update(transactions)
         .set({ total: newTotalScaled, updatedAt: new Date() })
