@@ -135,15 +135,6 @@ export class TransactionsService {
           WHERE ti.transaction_id = ${transactions.id}
             AND ti.status != 'cancelled'
         )`,
-        itemStatusCounts: sql<Record<string, number>>`(
-          SELECT COALESCE(json_object_agg(status, cnt), json_build_object())
-          FROM (
-            SELECT status, COUNT(*)::int AS cnt
-            FROM transaction_items ti
-            WHERE ti.transaction_id = ${transactions.id}
-            GROUP BY status
-          ) s
-        )`,
       })
       .from(transactions)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
@@ -151,7 +142,33 @@ export class TransactionsService {
       .limit(limit)
       .offset(offset);
 
-    return rows.map(mapTxn);
+    // Fetch item status counts in a separate batch query to avoid correlated-subquery
+    // issues with the postgres-js driver (json_object_agg in SELECT subqueries returns
+    // empty {} even when items exist).
+    const txnIds = rows.map((r) => r.id);
+    const itemStatusMap = new Map<number, Record<string, number>>();
+    if (txnIds.length > 0) {
+      const itemCountRows = await this.drizzle.db
+        .select({
+          transactionId: transactionItems.transactionId,
+          status: transactionItems.status,
+          count: sql<number>`COUNT(*)::int`,
+        })
+        .from(transactionItems)
+        .where(inArray(transactionItems.transactionId, txnIds))
+        .groupBy(transactionItems.transactionId, transactionItems.status);
+      for (const r of itemCountRows) {
+        if (!itemStatusMap.has(r.transactionId)) {
+          itemStatusMap.set(r.transactionId, {});
+        }
+        itemStatusMap.get(r.transactionId)![r.status] = r.count;
+      }
+    }
+
+    return rows.map((row) => ({
+      ...mapTxn(row),
+      itemStatusCounts: itemStatusMap.get(row.id) ?? {},
+    }));
   }
 
   async findOne(id: number) {
