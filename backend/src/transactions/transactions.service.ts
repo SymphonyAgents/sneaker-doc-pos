@@ -136,7 +136,7 @@ export class TransactionsService {
             AND ti.status != 'cancelled'
         )`,
         itemStatusCounts: sql<Record<string, number>>`(
-          SELECT COALESCE(json_object_agg(status, cnt), '{}')
+          SELECT COALESCE(json_object_agg(status, cnt), json_build_object())
           FROM (
             SELECT status, COUNT(*)::int AS cnt
             FROM transaction_items ti
