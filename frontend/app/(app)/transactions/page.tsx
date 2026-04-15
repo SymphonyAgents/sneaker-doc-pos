@@ -111,6 +111,13 @@ export default function TransactionsPage() {
     [transactions],
   );
 
+  // When a specific tab is active, only show the badge for that tab.
+  // On "All", show counts for every status from the loaded transactions.
+  const displayCounts = useMemo(() => {
+    if (statusFilter === 'all') return statusCounts;
+    return { [statusFilter]: statusCounts[statusFilter] ?? 0 };
+  }, [statusCounts, statusFilter]);
+
   const columns = useMemo(
     () => createTransactionColumns({ onDelete: setDeleteTarget, isSuperadmin, branchesMap }),
     [isSuperadmin, branchesMap],
@@ -145,7 +152,7 @@ export default function TransactionsPage() {
             )}
           >
             {s === 'all' ? 'All' : STATUS_LABELS[s]}
-            {s !== 'all' && statusCounts[s] ? <span className="ml-1.5 opacity-60">{statusCounts[s]}</span> : null}
+            {s !== 'all' && displayCounts[s] ? <span className="ml-1.5 opacity-60">{displayCounts[s]}</span> : null}
           </button>
         ))}
         {isAdmin && (
