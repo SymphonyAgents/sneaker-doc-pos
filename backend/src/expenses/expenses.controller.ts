@@ -44,8 +44,9 @@ export class ExpensesController {
   async findByDate(@Query('date') date: string, @Req() req: AuthedRequest) {
     const dbUser = await this.usersService.findById(req.user.id) as { userType: string; branchId?: number | null } | null;
     const branchId = this.scopedBranchId(dbUser);
-    // All roles see expenses scoped to their branch (staff see full branch, not just their own)
-    return this.expensesService.findByDate(date, undefined, branchId);
+    // Staff see only expenses created by other staff in the same branch (not admin/superadmin)
+    const staffOnly = dbUser?.userType === 'staff';
+    return this.expensesService.findByDate(date, undefined, branchId, staffOnly);
   }
 
   @UseGuards(SupabaseAuthGuard)
@@ -53,7 +54,8 @@ export class ExpensesController {
   async summary(@Query('date') date: string, @Req() req: AuthedRequest) {
     const dbUser = await this.usersService.findById(req.user.id) as { userType: string; branchId?: number | null } | null;
     const branchId = this.scopedBranchId(dbUser);
-    return this.expensesService.summary(date, undefined, branchId);
+    const staffOnly = dbUser?.userType === 'staff';
+    return this.expensesService.summary(date, undefined, branchId, staffOnly);
   }
 
   @UseGuards(SupabaseAuthGuard)
@@ -65,12 +67,14 @@ export class ExpensesController {
   ) {
     const dbUser = await this.usersService.findById(req.user.id) as { userType: string; branchId?: number | null } | null;
     const branchId = this.scopedBranchId(dbUser);
-    // All roles see expenses scoped to their branch (staff see full branch, not just their own)
+    // Staff see only expenses created by other staff in the same branch (not admin/superadmin)
+    const staffOnly = dbUser?.userType === 'staff';
     return this.expensesService.findByMonth(
       parseInt(year, 10),
       parseInt(month, 10),
       branchId,
       undefined,
+      staffOnly,
     );
   }
 

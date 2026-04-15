@@ -18,15 +18,18 @@ export class ExpensesService {
     private readonly audit: AuditService,
   ) {}
 
-  private async branchStaffIds(branchId: number): Promise<string[]> {
+  private async branchStaffIds(branchId: number, staffOnly = false): Promise<string[]> {
+    const conditions = staffOnly
+      ? and(eq(users.branchId, branchId), eq(users.userType, 'staff'))
+      : eq(users.branchId, branchId);
     const rows = await this.drizzle.db
       .select({ id: users.id })
       .from(users)
-      .where(eq(users.branchId, branchId));
+      .where(conditions);
     return rows.map((u) => u.id);
   }
 
-  async findByMonth(year: number, month: number, branchId?: number, staffId?: string) {
+  async findByMonth(year: number, month: number, branchId?: number, staffId?: string, staffOnly = false) {
     // month=0 means full year
     const from = month === 0 ? `${year}-01-01` : `${year}-${String(month).padStart(2, '0')}-01`;
     const to = month === 0
@@ -45,7 +48,7 @@ export class ExpensesService {
     }
 
     if (branchId) {
-      const staffIds = await this.branchStaffIds(branchId);
+      const staffIds = await this.branchStaffIds(branchId, staffOnly);
       if (staffIds.length === 0) return [];
       const rows = await this.drizzle.db
         .select()
@@ -61,7 +64,7 @@ export class ExpensesService {
     return rows.map((e) => ({ ...e, amount: fromScaled(e.amount) }));
   }
 
-  async findByDate(dateKey: string, staffId?: string, branchId?: number) {
+  async findByDate(dateKey: string, staffId?: string, branchId?: number, staffOnly = false) {
     const dateCondition = and(eq(expenses.dateKey, dateKey), isNull(expenses.deletedAt));
 
     if (staffId) {
@@ -73,7 +76,7 @@ export class ExpensesService {
     }
 
     if (branchId) {
-      const staffIds = await this.branchStaffIds(branchId);
+      const staffIds = await this.branchStaffIds(branchId, staffOnly);
       if (staffIds.length === 0) return [];
       const rows = await this.drizzle.db
         .select()
@@ -89,7 +92,7 @@ export class ExpensesService {
     return rows.map((e) => ({ ...e, amount: fromScaled(e.amount) }));
   }
 
-  async summary(dateKey: string, staffId?: string, branchId?: number) {
+  async summary(dateKey: string, staffId?: string, branchId?: number, staffOnly = false) {
     if (staffId) {
       const [result] = await this.drizzle.db
         .select({ total: sql<number>`COALESCE(SUM(${expenses.amount}), 0)` })
@@ -99,7 +102,7 @@ export class ExpensesService {
     }
 
     if (branchId) {
-      const staffIds = await this.branchStaffIds(branchId);
+      const staffIds = await this.branchStaffIds(branchId, staffOnly);
       if (staffIds.length === 0) return { dateKey, total: '0' };
       const [result] = await this.drizzle.db
         .select({ total: sql<number>`COALESCE(SUM(${expenses.amount}), 0)` })
