@@ -194,7 +194,10 @@ export const api = {
         body: JSON.stringify({ branchId }),
       }),
     list: () => apiFetch<AppUser[]>('/users'),
-    listAssignable: () => apiFetch<AssignableUser[]>('/users/assignable'),
+    listAssignable: (branchId?: number) => {
+      const qs = branchId ? `?branchId=${branchId}` : '';
+      return apiFetch<AssignableUser[]>(`/users/assignable${qs}`);
+    },
     updateRole: (id: string, userType: string) =>
       apiFetch<AppUser>(`/users/${id}/role`, {
         method: 'PATCH',

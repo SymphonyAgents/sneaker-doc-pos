@@ -416,7 +416,7 @@ export default function DashboardPage() {
           <StatCard
             label="No. of Pairs Today"
             href="/transactions"
-            value={String(daily?.count ?? 0)}
+            value={String(daily?.pairCount ?? 0)}
             loading={dashboardLoading}
             icon={ReceiptIcon}
             iconClass="text-zinc-500"

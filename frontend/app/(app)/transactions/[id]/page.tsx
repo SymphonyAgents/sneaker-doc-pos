@@ -107,15 +107,15 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const { data: currentUser } = useCurrentUserQuery();
   const isAdmin = currentUser?.userType === 'admin' || currentUser?.userType === 'superadmin';
   const isSuperadmin = currentUser?.userType === 'superadmin';
-  const { data: assignableUsers = [] } = useAssignableUsersQuery();
+
+  const { data: txn, isLoading, isFetching } = useTransactionDetailQuery(id);
+  const { data: assignableUsers = [] } = useAssignableUsersQuery(txn?.branchId ?? undefined);
   const { data: activePromos = [] } = usePromosQuery();
   const { data: allServices = [] } = useServicesQuery();
   const { data: cardBanksData = [] } = useCardBanksQuery();
   const cardBankOptions = buildCardBankOptions(cardBanksData);
   const [promoEditing, setPromoEditing] = useState(false);
   const [promoSelected, setPromoSelected] = useState('none');
-
-  const { data: txn, isLoading, isFetching } = useTransactionDetailQuery(id);
   const updateTxnMut = useUpdateTransactionMutation(id);
   const deleteTxnMut = useDeleteTransactionMutation(() => router.replace('/transactions'));
   const restoreTxnMut = useRestoreTransactionMutation(() => router.replace('/transactions'));

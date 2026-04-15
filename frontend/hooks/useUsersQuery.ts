@@ -24,11 +24,12 @@ export function useUserQuery(id: string) {
   });
 }
 
-export function useAssignableUsersQuery() {
+export function useAssignableUsersQuery(branchId?: number) {
   return useQuery({
-    queryKey: ASSIGNABLE_KEY,
-    queryFn: () => api.users.listAssignable(),
+    queryKey: branchId ? [...ASSIGNABLE_KEY, branchId] : ASSIGNABLE_KEY,
+    queryFn: () => api.users.listAssignable(branchId),
     staleTime: 5 * 60 * 1000, // 5 min — user list rarely changes
+    enabled: branchId !== undefined, // wait until branchId is known (from loaded transaction)
   });
 }
 

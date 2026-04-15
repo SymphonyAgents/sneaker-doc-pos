@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   Request,
   Req,
   UseGuards,
@@ -61,14 +62,21 @@ export class UsersController {
   }
 
   @Get('assignable')
-  async findAssignable(@Request() req: { user: { id: string } }) {
+  async findAssignable(
+    @Request() req: { user: { id: string } },
+    @Query('branchId') queryBranchId?: string,
+  ) {
     const currentUser = await this.usersService.findById(req.user.id);
     if (!currentUser) return [];
     // Non-superadmin with no branch → no access
     if (currentUser.userType !== 'superadmin' && !currentUser.branchId) return [];
-    // Always filter by the user's own branchId if set — even superadmins
-    // Superadmin without a branchId is the only case that sees all users across branches
-    return this.usersService.findAssignable(currentUser.branchId);
+    // If a specific branchId is requested (e.g. from transaction detail page),
+    // use that — allows fetching staff from a different branch for assignment.
+    // Fall back to the logged-in user's branchId.
+    const branchId = queryBranchId
+      ? parseInt(queryBranchId, 10)
+      : currentUser.branchId;
+    return this.usersService.findAssignable(branchId);
   }
 
   @Get(':id')

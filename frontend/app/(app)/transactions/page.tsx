@@ -74,7 +74,8 @@ export default function TransactionsPage() {
   }
 
   const params: Record<string, string> = {};
-  if (statusFilter !== 'all') params.status = statusFilter;
+  // Use itemStatus (pair-level) filter instead of transaction-level status
+  if (statusFilter !== 'all') params.itemStatus = statusFilter;
   if (committedSearch) params.search = committedSearch;
   if (committedFrom) params.from = committedFrom;
   if (committedTo) params.to = committedTo;
@@ -98,7 +99,13 @@ export default function TransactionsPage() {
 
   const statusCounts = useMemo(() =>
     transactions.reduce(
-      (acc, t) => { acc[t.status] = (acc[t.status] ?? 0) + 1; return acc; },
+      (acc, t) => {
+        const counts = t.itemStatusCounts ?? {};
+        Object.entries(counts).forEach(([status, count]) => {
+          acc[status] = (acc[status] ?? 0) + count;
+        });
+        return acc;
+      },
       {} as Record<string, number>,
     ),
     [transactions],

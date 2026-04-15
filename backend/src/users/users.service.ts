@@ -135,13 +135,14 @@ export class UsersService {
     return { deleted: true };
   }
 
-  // Returns active users for transaction assignment dropdowns
+  // Returns active staff users for transaction assignment dropdowns
   // Filtered to the same branch if branchId is provided
   async findAssignable(branchId?: number | null) {
-    const baseCondition = eq(users.isActive, true);
-    const whereClause = branchId
-      ? and(baseCondition, eq(users.branchId, branchId))
-      : baseCondition;
+    const conditions = [
+      eq(users.isActive, true),
+      eq(users.userType, 'staff'), // only staff users are assignable to transactions
+    ];
+    if (branchId) conditions.push(eq(users.branchId, branchId));
     return this.drizzle.db
       .select({
         id: users.id,
@@ -152,7 +153,7 @@ export class UsersService {
         branchId: users.branchId,
       })
       .from(users)
-      .where(whereClause)
+      .where(and(...conditions))
       .orderBy(asc(users.nickname));
   }
 

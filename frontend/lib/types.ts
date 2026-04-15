@@ -142,6 +142,7 @@ export interface Transaction {
   payments?: ClaimPayment[];
   photos?: TransactionPhoto[];
   itemCount?: number;
+  itemStatusCounts?: Record<string, number>; // pair counts by item status, returned from list endpoint
 }
 
 export interface Expense {
@@ -256,6 +257,7 @@ export interface DashboardSummary {
   todayCollectionTotal: string;
   daily: {
     count: number;
+    pairCount: number;
     totalRevenue: string;
     totalPaid: string;
     totalBalance: string;

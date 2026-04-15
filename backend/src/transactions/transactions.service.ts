@@ -57,6 +57,7 @@ export interface FindAllParams {
   page?: number;
   limit?: number;
   status?: string;
+  itemStatus?: string; // filter by presence of at least one item with this status
   search?: string;
   from?: string;
   to?: string;
@@ -90,7 +91,7 @@ export class TransactionsService {
   }
 
   async findAll(params: FindAllParams = {}) {
-    const { page = 1, limit = 50, status, search, from, to, branchId } = params;
+    const { page = 1, limit = 50, status, itemStatus, search, from, to, branchId } = params;
     const offset = (page - 1) * limit;
 
     const conditions: ReturnType<typeof eq>[] = [];
@@ -115,6 +116,16 @@ export class TransactionsService {
         ) as ReturnType<typeof eq>,
       );
     }
+    // itemStatus: filter to transactions that have at least one item with this status
+    if (itemStatus) {
+      conditions.push(
+        sql`EXISTS (
+          SELECT 1 FROM transaction_items ti
+          WHERE ti.transaction_id = ${transactions.id}
+            AND ti.status = ${itemStatus}
+        )` as ReturnType<typeof eq>,
+      );
+    }
 
     const rows = await this.drizzle.db
       .select({
@@ -123,6 +134,15 @@ export class TransactionsService {
           SELECT COUNT(*)::int FROM transaction_items ti
           WHERE ti.transaction_id = ${transactions.id}
             AND ti.status != 'cancelled'
+        )`,
+        itemStatusCounts: sql<Record<string, number>>`(
+          SELECT COALESCE(json_object_agg(status, cnt), '{}')
+          FROM (
+            SELECT status, COUNT(*)::int AS cnt
+            FROM transaction_items ti
+            WHERE ti.transaction_id = ${transactions.id}
+            GROUP BY status
+          ) s
         )`,
       })
       .from(transactions)
@@ -903,6 +923,7 @@ export class TransactionsService {
       dailyRevenueRow,
       dailyCountRow,
       totalPairsRow,
+      dailyPairCountRow,
     ] = await Promise.all([
       // 1. Monthly revenue + paid from active (non-cancelled) transactions
       this.drizzle.db
@@ -997,6 +1018,22 @@ export class TransactionsService {
         .from(transactionItems)
         .innerJoin(transactions, eq(transactionItems.transactionId, transactions.id))
         .where(and(...activeTxnConditions)),
+
+      // 9. Daily pair count (items in today's non-cancelled transactions)
+      (async () => {
+        const today = new Date().toISOString().split('T')[0];
+        const dailyConds = [
+          sql`${transactions.createdAt}::date = ${today}::date` as ReturnType<typeof eq>,
+          isNull(transactions.deletedAt),
+          ne(transactions.status, 'cancelled') as ReturnType<typeof eq>,
+        ];
+        if (branchId) dailyConds.push(eq(transactions.branchId, branchId));
+        return this.drizzle.db
+          .select({ count: sql<number>`COUNT(*)` })
+          .from(transactionItems)
+          .innerJoin(transactions, eq(transactionItems.transactionId, transactions.id))
+          .where(and(...dailyConds));
+      })(),
     ]);
 
     // ---------- Compute all values (Number() to guard against string coercion) ----------
@@ -1021,6 +1058,7 @@ export class TransactionsService {
     const dailyPaid = Number(dailyRevenueRow[0]?.totalPaid ?? 0);
     const dailyCount = Number(dailyCountRow[0]?.count ?? 0);
     const totalPairs = Number(totalPairsRow[0]?.count ?? 0);
+    const dailyPairCount = Number(dailyPairCountRow[0]?.count ?? 0);
 
     return {
       monthly: {
@@ -1038,6 +1076,7 @@ export class TransactionsService {
       todayCollectionTotal: todayCollTotal.toFixed(2),
       daily: {
         count: dailyCount,
+        pairCount: dailyPairCount,
         totalRevenue: fromScaled(dailyRev),
         totalPaid: fromScaled(dailyPaid),
         totalBalance: fromScaled(dailyRev - dailyPaid),
