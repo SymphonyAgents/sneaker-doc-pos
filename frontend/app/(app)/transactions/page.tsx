@@ -24,6 +24,7 @@ import {
   useDeleteTransactionMutation,
   useDeletedTransactionsQuery,
   useRestoreTransactionMutation,
+  useItemStatusCountsQuery,
 } from '@/hooks/useTransactionsQuery';
 import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
 import { useBranchesQuery } from '@/hooks/useBranchesQuery';
@@ -97,26 +98,12 @@ export default function TransactionsPage() {
   const { data: deletedTxns = [], isLoading: deletedLoading } = useDeletedTransactionsQuery();
   const restoreMut = useRestoreTransactionMutation(() => setRestoreTarget(null));
 
-  const statusCounts = useMemo(() =>
-    transactions.reduce(
-      (acc, t) => {
-        const counts = t.itemStatusCounts ?? {};
-        Object.entries(counts).forEach(([status, count]) => {
-          acc[status] = (acc[status] ?? 0) + count;
-        });
-        return acc;
-      },
-      {} as Record<string, number>,
-    ),
-    [transactions],
+  // Global item status counts — always reflects all transactions for the branch,
+  // independent of the current tab/filter. Used for tab badges.
+  const scopedBranchId = currentUser?.userType !== 'superadmin' ? currentUser?.branchId : undefined;
+  const { data: globalStatusCounts = {} } = useItemStatusCountsQuery(
+    scopedBranchId ?? undefined,
   );
-
-  // When a specific tab is active, only show the badge for that tab.
-  // On "All", show counts for every status from the loaded transactions.
-  const displayCounts = useMemo(() => {
-    if (statusFilter === 'all') return statusCounts;
-    return { [statusFilter]: statusCounts[statusFilter] ?? 0 };
-  }, [statusCounts, statusFilter]);
 
   const columns = useMemo(
     () => createTransactionColumns({ onDelete: setDeleteTarget, isSuperadmin, branchesMap }),
@@ -152,7 +139,7 @@ export default function TransactionsPage() {
             )}
           >
             {s === 'all' ? 'All' : STATUS_LABELS[s]}
-            {s !== 'all' && displayCounts[s] ? <span className="ml-1.5 opacity-60">{displayCounts[s]}</span> : null}
+            {s !== 'all' && globalStatusCounts[s] ? <span className="ml-1.5 opacity-60">{globalStatusCounts[s]}</span> : null}
           </button>
         ))}
         {isAdmin && (

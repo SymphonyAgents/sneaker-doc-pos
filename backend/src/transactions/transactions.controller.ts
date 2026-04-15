@@ -192,6 +192,14 @@ export class TransactionsController {
     return this.transactionsService.findDeleted(branch);
   }
 
+  // Global item status counts — used for tab badges (independent of list filter)
+  @UseGuards(SupabaseAuthGuard)
+  @Get('item-status-counts')
+  async itemStatusCounts(@Req() req: AuthedRequest, @Query('branchId') branchId?: string) {
+    const branch = await this.scopedBranchId(req.user.id, branchId);
+    return this.transactionsService.itemStatusCounts(branch);
+  }
+
   @UseGuards(SupabaseAuthGuard)
   @Get(':id')
   async findOne(@Param('id', ParseIntPipe) id: number, @Req() req: AuthedRequest) {

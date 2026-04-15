@@ -294,3 +294,12 @@ export function useRevertItemMutation(txnId: number) {
     onError: (err: Error) => toast.error('Failed to revert item', { description: err.message }),
   });
 }
+
+
+export function useItemStatusCountsQuery(branchId?: number) {
+  return useQuery({
+    queryKey: [...TRANSACTIONS_KEY, 'item-status-counts', branchId],
+    queryFn: () => api.transactions.itemStatusCounts(branchId),
+    staleTime: 30_000,
+  });
+}

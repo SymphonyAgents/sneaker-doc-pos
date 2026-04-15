@@ -90,6 +90,27 @@ export class TransactionsService {
     return String(max + 1).padStart(4, '0');
   }
 
+  // Global pair counts per item status — used for tab badges on the transactions list.
+  // Scoped by branch (or all branches for superadmin).
+  async itemStatusCounts(branchId?: number): Promise<Record<string, number>> {
+    const conditions: ReturnType<typeof eq>[] = [
+      isNull(transactions.deletedAt) as ReturnType<typeof eq>,
+    ];
+    if (branchId) conditions.push(eq(transactions.branchId, branchId) as ReturnType<typeof eq>);
+
+    const rows = await this.drizzle.db
+      .select({
+        status: transactionItems.status,
+        count: sql<number>`COUNT(*)::int`,
+      })
+      .from(transactionItems)
+      .innerJoin(transactions, eq(transactionItems.transactionId, transactions.id))
+      .where(and(...conditions))
+      .groupBy(transactionItems.status);
+
+    return Object.fromEntries(rows.map((r) => [r.status, r.count]));
+  }
+
   async findAll(params: FindAllParams = {}) {
     const { page = 1, limit = 50, status, itemStatus, search, from, to, branchId } = params;
     const offset = (page - 1) * limit;
