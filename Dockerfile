@@ -14,6 +14,8 @@ ENV NEXT_PUBLIC_APP_URL=https://sneakerdoc.symph.co
 ENV NEXT_PUBLIC_SUPABASE_URL=https://zcevzkovxfryhwkkuvlf.supabase.co
 ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_-UqXYTzlbYNOZK54UBQbtQ_ZXdJvOKC
 ENV NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET=sneaker-doc
+ENV NEXT_PUBLIC_POSTHOG_KEY=phc_AKKwHoQ8szyC4yzfBuCec9oAGMFib5MPnWBUrFs8Ce6s
+ENV NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
 
 RUN npm run build
 
@@ -31,6 +33,8 @@ ENV NEXT_PUBLIC_APP_URL=https://sneakerdoc.symph.co
 ENV NEXT_PUBLIC_SUPABASE_URL=https://zcevzkovxfryhwkkuvlf.supabase.co
 ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_-UqXYTzlbYNOZK54UBQbtQ_ZXdJvOKC
 ENV NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET=sneaker-doc
+ENV NEXT_PUBLIC_POSTHOG_KEY=phc_AKKwHoQ8szyC4yzfBuCec9oAGMFib5MPnWBUrFs8Ce6s
+ENV NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
 
 # Copy built app + dependencies
 COPY --from=builder /app/package.json ./
