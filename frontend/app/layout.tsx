@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { QueryProvider } from '@/providers/query-provider';
+import { PostHogProvider } from '@/providers/posthog-provider';
 import { NavigationProgress } from '@/components/ui/navigation-progress';
 import { Toaster } from 'sonner';
 
@@ -52,7 +53,9 @@ export default function RootLayout({
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <div id="js-error-banner" style={{display:'none',position:'fixed',top:0,left:0,right:0,background:'#ef4444',color:'#fff',padding:'12px',fontSize:'13px',zIndex:99999,wordBreak:'break-all'}} />
         <NavigationProgress />
-        <QueryProvider>{children}</QueryProvider>
+        <PostHogProvider>
+          <QueryProvider>{children}</QueryProvider>
+        </PostHogProvider>
         <Toaster position="bottom-right" richColors />
       </body>
     </html>
