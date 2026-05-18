@@ -818,6 +818,9 @@ export class TransactionsService {
     // Deduct expenses from their respective collection channels by method
     const expenseConditions: ReturnType<typeof eq>[] = [
       isNull(expenses.deletedAt) as ReturnType<typeof eq>,
+      // Auto-created card fee expenses are already deducted via claimPayments.fee above.
+      // Excluding them here prevents card collections from subtracting the same fee twice.
+      sql`NOT (${expenses.source} = 'system' AND ${expenses.category} = 'Card Processing Fee' AND ${expenses.paymentId} IS NOT NULL)` as ReturnType<typeof eq>,
     ];
     if (year !== 0) {
       const fromDate = month === 0
