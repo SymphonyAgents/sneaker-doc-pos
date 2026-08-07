@@ -94,6 +94,7 @@ export const transactions = pgTable('transactions', {
   newPickupDate: date('new_pickup_date'),
   total: bigint('total', { mode: 'number' }).default(0).notNull(),
   paid: bigint('paid', { mode: 'number' }).default(0).notNull(),
+  reconciledAmount: bigint('reconciled_amount', { mode: 'number' }),
   promoId: integer('promo_id').references(() => promos.id, {
     onDelete: 'set null',
   }),
@@ -133,6 +134,21 @@ export const transactionItems = pgTable('transaction_items', {
 // ---------------------------------------------------------------------------
 // claim_payments
 // ---------------------------------------------------------------------------
+export const transactionReconciliations = pgTable('transaction_reconciliations', {
+  id: serial('id').primaryKey(),
+  transactionId: integer('transaction_id')
+    .references(() => transactions.id, { onDelete: 'cascade' })
+    .notNull(),
+  previousReconciledAmount: bigint('previous_reconciled_amount', { mode: 'number' }),
+  reconciledAmount: bigint('reconciled_amount', { mode: 'number' }).notNull(),
+  reason: varchar('reason', { length: 255 }),
+  note: text('note'),
+  createdByUserId: uuid('created_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
 export const claimPayments = pgTable('claim_payments', {
   id: serial('id').primaryKey(),
   transactionId: integer('transaction_id')
@@ -290,6 +306,7 @@ export const transactionsRelations = relations(
     }),
     items: many(transactionItems),
     payments: many(claimPayments),
+    reconciliations: many(transactionReconciliations),
     photos: many(transactionPhotos),
   }),
 );
@@ -314,6 +331,17 @@ export const transactionItemsRelations = relations(
     }),
   }),
 );
+
+export const transactionReconciliationsRelations = relations(transactionReconciliations, ({ one }) => ({
+  transaction: one(transactions, {
+    fields: [transactionReconciliations.transactionId],
+    references: [transactions.id],
+  }),
+  createdBy: one(users, {
+    fields: [transactionReconciliations.createdByUserId],
+    references: [users.id],
+  }),
+}));
 
 export const claimPaymentsRelations = relations(claimPayments, ({ one }) => ({
   transaction: one(transactions, {

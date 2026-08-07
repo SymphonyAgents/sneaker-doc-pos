@@ -79,6 +79,20 @@ export interface TransactionItem {
   addonServices?: { id: number; name: string; type: string }[] | null;
 }
 
+export interface TransactionReconciliation {
+  id: number;
+  transactionId: number;
+  previousReconciledAmount: string | null;
+  reconciledAmount: string;
+  reason: string | null;
+  note: string | null;
+  createdByUserId: string | null;
+  createdAt: string;
+  createdByEmail?: string | null;
+  createdByFullName?: string | null;
+  createdByNickname?: string | null;
+}
+
 export interface ClaimPayment {
   id: number;
   transactionId: number;
@@ -123,6 +137,7 @@ export interface Transaction {
   newPickupDate: string | null;
   total: string;
   paid: string;
+  reconciledAmount: string | null;
   promoId: number | null;
   branchId: number | null;
   staffId?: string | null;
@@ -140,6 +155,7 @@ export interface Transaction {
   promo?: Promo | null;
   items?: TransactionItem[];
   payments?: ClaimPayment[];
+  reconciliations?: TransactionReconciliation[];
   photos?: TransactionPhoto[];
   itemCount?: number;
   itemStatusCounts?: Record<string, number>; // pair counts by item status, returned from list endpoint

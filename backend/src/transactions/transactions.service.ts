@@ -25,6 +25,7 @@ import {
   transactions,
   transactionItems,
   transactionPhotos,
+  transactionReconciliations,
   claimPayments,
   customers,
   promos,
@@ -49,6 +50,7 @@ import { AddPaymentDto } from './dto/add-payment.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
 import { AddPhotoDto } from './dto/add-photo.dto';
 import { EditTransactionDto } from './dto/edit-transaction.dto';
+import { ReconcileTransactionDto } from './dto/reconcile-transaction.dto';
 import { toScaled, fromScaled } from '../utils/money';
 import { PromosService } from '../promos/promos.service';
 import { CardBanksService } from '../card-banks/card-banks.service';
@@ -65,8 +67,40 @@ export interface FindAllParams {
 }
 
 // Map raw transaction row fields to unscaled money strings
-function mapTxn<T extends { total: number; paid: number }>(txn: T) {
-  return { ...txn, total: fromScaled(txn.total), paid: fromScaled(txn.paid) };
+function mapTxn<T extends { total: number; paid: number; reconciledAmount?: number | null }>(txn: T) {
+  return {
+    ...txn,
+    total: fromScaled(txn.total),
+    paid: fromScaled(txn.paid),
+    reconciledAmount: txn.reconciledAmount != null ? fromScaled(txn.reconciledAmount) : null,
+  };
+}
+
+function cardReportingAmountSql() {
+  return sql<number>`CASE
+    WHEN ${claimPayments.method} = 'card'
+      AND ${transactions.reconciledAmount} IS NOT NULL
+      AND ${claimPayments.id} = (
+        SELECT MIN(cp.id) FROM ${claimPayments} cp
+        WHERE cp.transaction_id = ${transactions.id}
+          AND cp.method = 'card'
+      )
+      THEN ${claimPayments.amount} + (${transactions.reconciledAmount} - ${transactions.total})
+    ELSE ${claimPayments.amount}
+  END`;
+}
+
+function transactionReportingTotalSql(fallback: typeof transactions.total | typeof transactions.paid) {
+  return sql<number>`CASE
+    WHEN ${transactions.reconciledAmount} IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM ${claimPayments} cp
+        WHERE cp.transaction_id = ${transactions.id}
+          AND cp.method = 'card'
+      )
+      THEN ${transactions.reconciledAmount}
+    ELSE ${fallback}
+  END`;
 }
 
 @Injectable()
@@ -241,6 +275,14 @@ export class TransactionsService {
       .from(claimPayments)
       .where(eq(claimPayments.transactionId, id));
 
+    const reconciliations = await this.drizzle.db
+      .select({ reconciliation: transactionReconciliations, user: usersTable })
+      .from(transactionReconciliations)
+      .leftJoin(usersTable, eq(transactionReconciliations.createdByUserId, usersTable.id))
+      .where(eq(transactionReconciliations.transactionId, id))
+      .orderBy(desc(transactionReconciliations.createdAt))
+      .catch(() => [] as { reconciliation: typeof transactionReconciliations.$inferSelect; user: typeof usersTable.$inferSelect | null }[]);
+
     const photos = await this.drizzle.db
       .select()
       .from(transactionPhotos)
@@ -273,6 +315,16 @@ export class TransactionsService {
         ...p,
         amount: fromScaled(p.amount),
         fee: p.fee != null ? fromScaled(p.fee) : null,
+      })),
+      reconciliations: reconciliations.map((r) => ({
+        ...r.reconciliation,
+        previousReconciledAmount: r.reconciliation.previousReconciledAmount != null
+          ? fromScaled(r.reconciliation.previousReconciledAmount)
+          : null,
+        reconciledAmount: fromScaled(r.reconciliation.reconciledAmount),
+        createdByEmail: r.user?.email ?? null,
+        createdByFullName: r.user?.fullName ?? null,
+        createdByNickname: r.user?.nickname ?? null,
       })),
       customerStreetName: customerAddress?.streetName ?? null,
       customerCity: customerAddress?.city ?? null,
@@ -761,7 +813,7 @@ export class TransactionsService {
     const rows = await this.drizzle.db
       .select({
         method: claimPayments.method,
-        total: sql<number>`COALESCE(SUM(${claimPayments.amount}), 0)`,
+        total: sql<number>`COALESCE(SUM(${cardReportingAmountSql()}), 0)`,
         totalFee: sql<number>`COALESCE(SUM(${claimPayments.fee}), 0)`,
       })
       .from(claimPayments)
@@ -890,7 +942,8 @@ export class TransactionsService {
         id: claimPayments.id,
         transactionId: claimPayments.transactionId,
         method: claimPayments.method,
-        amount: claimPayments.amount,
+        amount: cardReportingAmountSql(),
+        originalAmount: claimPayments.amount,
         fee: claimPayments.fee,
         feePercent: claimPayments.feePercent,
         paidAt: claimPayments.paidAt,
@@ -922,7 +975,7 @@ export class TransactionsService {
         id: claimPayments.id,
         transactionId: claimPayments.transactionId,
         method: claimPayments.method,
-        amount: claimPayments.amount,
+        amount: cardReportingAmountSql(),
         paidAt: claimPayments.paidAt,
         txnNumber: transactions.number,
         customerName: transactions.customerName,
@@ -969,8 +1022,8 @@ export class TransactionsService {
       // 1. Monthly revenue + paid from active (non-cancelled) transactions
       this.drizzle.db
         .select({
-          totalRevenue: sql<number>`COALESCE(SUM(${transactions.total}), 0)`,
-          totalPaid: sql<number>`COALESCE(SUM(${transactions.paid}), 0)`,
+          totalRevenue: sql<number>`COALESCE(SUM(${transactionReportingTotalSql(transactions.total)}), 0)`,
+          totalPaid: sql<number>`COALESCE(SUM(${transactionReportingTotalSql(transactions.paid)}), 0)`,
           count: sql<number>`COUNT(*)`,
         })
         .from(transactions)
@@ -1031,8 +1084,8 @@ export class TransactionsService {
         if (branchId) dailyConds.push(eq(transactions.branchId, branchId));
         return this.drizzle.db
           .select({
-            totalRevenue: sql<number>`COALESCE(SUM(${transactions.total}), 0)`,
-            totalPaid: sql<number>`COALESCE(SUM(${transactions.paid}), 0)`,
+            totalRevenue: sql<number>`COALESCE(SUM(${transactionReportingTotalSql(transactions.total)}), 0)`,
+            totalPaid: sql<number>`COALESCE(SUM(${transactionReportingTotalSql(transactions.paid)}), 0)`,
           })
           .from(transactions)
           .where(and(...dailyConds));
@@ -1468,6 +1521,55 @@ export class TransactionsService {
     await this.syncTransactionStatus(transactionId);
 
     return updated;
+  }
+
+  async reconcileTransaction(id: number, dto: ReconcileTransactionDto, performedBy?: string) {
+    const txn = await this.findOne(id);
+    const hasCardPayment = (txn.payments ?? []).some((p) => p.method === 'card');
+    if (!hasCardPayment) {
+      throw new BadRequestException('Only transactions with card payments can be reconciled');
+    }
+
+    const reconciledAmount = toScaled(dto.reconciledAmount);
+    const previousReconciledAmount = txn.reconciledAmount != null
+      ? toScaled(txn.reconciledAmount)
+      : null;
+    const branchId = performedBy ? await this.users.getBranchId(performedBy) : null;
+
+    await this.drizzle.db.transaction(async (db) => {
+      await db.insert(transactionReconciliations).values({
+        transactionId: id,
+        previousReconciledAmount,
+        reconciledAmount,
+        reason: dto.reason?.trim() || null,
+        note: dto.note?.trim() || null,
+        createdByUserId: performedBy ?? null,
+      });
+
+      await db
+        .update(transactions)
+        .set({ reconciledAmount, updatedAt: new Date() })
+        .where(eq(transactions.id, id));
+    });
+
+    await this.audit.log({
+      action: 'update',
+      auditType: AUDIT_TYPE.TRANSACTION_RECONCILED,
+      entityType: 'transaction',
+      entityId: txn.number,
+      source: 'admin',
+      performedBy,
+      branchId: branchId ?? undefined,
+      details: {
+        txnNumber: txn.number,
+        previousReconciledAmount: txn.reconciledAmount ?? null,
+        reconciledAmount: dto.reconciledAmount,
+        reason: dto.reason ?? null,
+        note: dto.note ?? null,
+      },
+    });
+
+    return this.findOne(id);
   }
 
   async addPayment(id: number, dto: AddPaymentDto, performedBy?: string) {

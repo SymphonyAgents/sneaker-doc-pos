@@ -11,6 +11,20 @@ import {
 } from '../db/schema';
 import { fromScaled } from '../utils/money';
 
+function cardReportingAmountSql() {
+  return sql<number>`CASE
+    WHEN ${claimPayments.method} = 'card'
+      AND ${transactions.reconciledAmount} IS NOT NULL
+      AND ${claimPayments.id} = (
+        SELECT MIN(cp.id) FROM ${claimPayments} cp
+        WHERE cp.transaction_id = ${transactions.id}
+          AND cp.method = 'card'
+      )
+      THEN ${claimPayments.amount} + (${transactions.reconciledAmount} - ${transactions.total})
+    ELSE ${claimPayments.amount}
+  END`;
+}
+
 function getDateRange(year: number, month: number) {
   const from =
     month === 0
@@ -69,7 +83,7 @@ export class ReportsService {
       this.drizzle.db
         .select({
           method: claimPayments.method,
-          total: sql<number>`COALESCE(SUM(${claimPayments.amount}), 0)`,
+          total: sql<number>`COALESCE(SUM(${cardReportingAmountSql()}), 0)`,
         })
         .from(claimPayments)
         .innerJoin(transactions, eq(claimPayments.transactionId, transactions.id))
@@ -141,6 +155,7 @@ export class ReportsService {
           status: transactions.status,
           total: transactions.total,
           paid: transactions.paid,
+          reconciledAmount: transactions.reconciledAmount,
           itemCount: sql<number>`COUNT(${transactionItems.id})`,
         })
         .from(transactions)
@@ -188,8 +203,8 @@ export class ReportsService {
       })),
       txnList: txnListRows.map((r) => ({
         ...r,
-        total: fromScaled(r.total),
-        paid: fromScaled(r.paid),
+        total: fromScaled(r.reconciledAmount ?? r.total),
+        paid: fromScaled(r.reconciledAmount ?? r.paid),
         itemCount: Number(r.itemCount),
       })),
     };

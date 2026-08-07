@@ -186,6 +186,24 @@ export function useAddPaymentMutation(txnId: string, onSuccess?: () => void) {
   });
 }
 
+export function useReconcileTransactionMutation(txnId: string, onSuccess?: () => void) {
+  const numericTxnId = parseInt(txnId, 10);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { reconciledAmount: string; reason?: string; note?: string }) =>
+      api.transactions.reconcile(numericTxnId, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: transactionDetailKey(txnId) });
+      qc.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      qc.invalidateQueries({ queryKey: ['collections-summary'] });
+      qc.invalidateQueries({ queryKey: ['reports-summary'] });
+      toast.success('Transaction reconciled');
+      onSuccess?.();
+    },
+    onError: (err: Error) => toast.error('Failed to reconcile transaction', { description: err.message }),
+  });
+}
+
 export function useUpdatePaymentMethodMutation(txnId: string, onSuccess?: (bankDepositWarning: boolean) => void) {
   const numericTxnId = parseInt(txnId, 10);
   const qc = useQueryClient();

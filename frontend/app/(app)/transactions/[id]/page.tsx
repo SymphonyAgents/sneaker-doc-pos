@@ -33,6 +33,7 @@ import {
   useUpdateTransactionMutation,
   useUpdateItemStatusMutation,
   useEditTransactionMutation,
+  useReconcileTransactionMutation,
   useAddPaymentMutation,
   useDeleteTransactionMutation,
   useRestoreTransactionMutation,
@@ -69,6 +70,10 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentRef, setPaymentRef] = useState('');
   const [paymentError, setPaymentError] = useState('');
+  const [reconciledAmount, setReconciledAmount] = useState('');
+  const [reconciliationReason, setReconciliationReason] = useState('');
+  const [reconciliationNote, setReconciliationNote] = useState('');
+  const [reconciliationError, setReconciliationError] = useState('');
 
   const [emailTemplate, setEmailTemplate] = useState<EmailTemplateKey>(EMAIL_TEMPLATES.pickup_ready);
   const [lightbox, setLightbox] = useState<{ src: string; label: string } | null>(null);
@@ -100,6 +105,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   type EditItemDraft = { id: number; shoeDescription: string; serviceId: string };
   type EditPaymentDraft = { id: number; method: string; referenceNumber: string; cardBank: string };
   const [editTxnOpen, setEditTxnOpen] = useState(false);
+  const [editTab, setEditTab] = useState<'payments' | 'items'>('payments');
   const [editDraftItems, setEditDraftItems] = useState<EditItemDraft[]>([]);
   const [editDraftPayments, setEditDraftPayments] = useState<EditPaymentDraft[]>([]);
   const editInitializedRef = useRef(false);
@@ -121,6 +127,12 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
   const restoreTxnMut = useRestoreTransactionMutation(() => router.replace('/transactions'));
   const updateItemStatusMut = useUpdateItemStatusMutation(id);
   const editTxnMut = useEditTransactionMutation(id, () => setEditTxnOpen(false));
+  const reconcileTxnMut = useReconcileTransactionMutation(id, () => {
+    setReconciliationReason('');
+    setReconciliationNote('');
+    setReconciliationError('');
+    setEditTxnOpen(false);
+  });
   const uploadPhotoMut = useUploadPhotoMutation(id);
   const uploadTxnPhotoMut = useUploadTxnPhotoMutation(id);
 
@@ -171,6 +183,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
       initializedRef.current = id;
       setRescheduleValue(txn.newPickupDate ?? '');
       setNoteValue(txn.note ?? '');
+      setReconciledAmount(txn.reconciledAmount ?? '');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [txn?.id]);
@@ -414,6 +427,8 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
 
   const balance = parseFloat(txn.total) - parseFloat(txn.paid);
   const refundAmount = balance < 0 ? Math.abs(balance) : 0;
+  const hasCardPayment = (txn.payments ?? []).some((p) => p.method === 'card');
+  const displayedTotal = hasCardPayment && txn.reconciledAmount ? txn.reconciledAmount : txn.total;
   const isDeleted = !!txn.deletedAt;
   const txnLocked = isDeleted || ([TRANSACTION_STATUS.CANCELLED, TRANSACTION_STATUS.CLAIMED] as string[]).includes(txn.status);
 
@@ -464,6 +479,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                       referenceNumber: p.referenceNumber ?? '',
                       cardBank: p.cardBank ?? '',
                     })));
+                    setEditTab((txn.payments ?? []).length > 0 ? 'payments' : 'items');
                     setEditTxnOpen(true);
                   }}
                   className="flex items-center gap-1.5 bg-zinc-900 text-white rounded-md px-3.5 py-1.5 text-xs font-semibold hover:bg-zinc-700 transition-colors duration-150"
@@ -717,10 +733,29 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
               Payment Summary
             </h2>
             <div className="space-y-2.5">
-              <div className="flex justify-between text-sm">
-                <span className="text-zinc-500">Total</span>
-                <span className="font-mono font-medium text-zinc-950">{formatPeso(txn.total)}</span>
+              <div className={cn(
+                'flex justify-between text-sm',
+                hasCardPayment && txn.reconciledAmount && 'rounded-md border border-violet-100 bg-violet-50 px-3 py-2',
+              )}>
+                <div className="flex items-center gap-2">
+                  <span className={hasCardPayment && txn.reconciledAmount ? 'text-violet-600' : 'text-zinc-500'}>Total</span>
+                  {hasCardPayment && txn.reconciledAmount && (
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-violet-700 bg-white border border-violet-100 rounded-full px-2 py-0.5">
+                      Reconciled
+                    </span>
+                  )}
+                </div>
+                <span className={cn(
+                  'font-mono font-medium',
+                  hasCardPayment && txn.reconciledAmount ? 'text-violet-900' : 'text-zinc-950',
+                )}>{formatPeso(displayedTotal)}</span>
               </div>
+              {hasCardPayment && txn.reconciledAmount && (
+                <div className="flex justify-between text-xs px-3">
+                  <span className="text-zinc-400">Original total</span>
+                  <span className="font-mono text-zinc-400">{formatPeso(txn.total)}</span>
+                </div>
+              )}
               {txn.promo && (
                 <div className="flex justify-between text-sm">
                   <span className="text-zinc-500">Promo</span>
@@ -970,6 +1005,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
               )}
             </DialogContent>
           </Dialog>
+
 
           {/* Payment history + SMS history (tabbed) */}
           <PaymentHistoryCard txn={txn} />
@@ -1386,15 +1422,15 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
       {isSuperadmin && (
         <Dialog
           open={editTxnOpen}
-          onOpenChange={(open) => { if (!open && !editTxnMut.isPending) setEditTxnOpen(false); }}
+          onOpenChange={(open) => { if (!open && !editTxnMut.isPending && !reconcileTxnMut.isPending) setEditTxnOpen(false); }}
         >
-          <DialogContent className="bg-white sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogContent className="bg-white sm:max-w-lg h-[82vh] max-h-[82vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-base">Edit Transaction #{txn.number}</DialogTitle>
               <DialogDescription className="text-xs text-zinc-400">Superadmin only · Changes are audited</DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-5 pt-1">
+            <div className="space-y-5 pt-1 min-h-[calc(82vh-9rem)] flex flex-col">
               {/* Loading skeleton while detail data is fetching */}
               {!txn?.items && (
                 <div className="space-y-3">
@@ -1418,8 +1454,31 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                   ))}
                 </div>
               )}
+              <div className="inline-flex rounded-lg border border-zinc-200 bg-zinc-50 p-1">
+                <button
+                  type="button"
+                  onClick={() => setEditTab('payments')}
+                  className={cn(
+                    'rounded-md px-3 py-1.5 text-xs font-semibold transition-colors',
+                    editTab === 'payments' ? 'bg-white text-zinc-950 shadow-sm' : 'text-zinc-400 hover:text-zinc-700',
+                  )}
+                >
+                  Payments
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditTab('items')}
+                  className={cn(
+                    'rounded-md px-3 py-1.5 text-xs font-semibold transition-colors',
+                    editTab === 'items' ? 'bg-white text-zinc-950 shadow-sm' : 'text-zinc-400 hover:text-zinc-700',
+                  )}
+                >
+                  Items
+                </button>
+              </div>
+
               {/* Payments — shown first */}
-              {editDraftPayments.length > 0 && (
+              {editTab === 'payments' && editDraftPayments.length > 0 && (
                 <div>
                   <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">Payments</p>
                   <div className="space-y-3">
@@ -1483,8 +1542,81 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                 </div>
               )}
 
+              {editTab === 'payments' && hasCardPayment && (
+                <div className="rounded-lg border border-violet-200 bg-white p-3 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold text-violet-600 uppercase tracking-wide">Card Reconciliation</p>
+                      <p className="text-xs text-zinc-400 mt-0.5">Reports use this amount when set.</p>
+                    </div>
+                    {txn.reconciledAmount && (
+                      <span className="text-[11px] font-medium text-violet-700 bg-violet-50 border border-violet-100 rounded-full px-2 py-0.5">
+                        Reconciled
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-md bg-zinc-50 border border-zinc-100 px-3 py-2">
+                      <p className="text-zinc-400">System amount</p>
+                      <p className="font-mono font-medium text-zinc-950 mt-0.5">{formatPeso(txn.total)}</p>
+                    </div>
+                    <div className="rounded-md bg-violet-50 border border-violet-100 px-3 py-2">
+                      <p className="text-violet-500">Reported amount</p>
+                      <p className="font-mono font-medium text-violet-900 mt-0.5">{formatPeso(displayedTotal)}</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-zinc-700">Reconciled Amount (₱)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={reconciledAmount}
+                      onChange={(e) => { setReconciledAmount(e.target.value); setReconciliationError(''); }}
+                      className={cn(
+                        'w-full px-3 py-2 text-sm bg-white border rounded-md font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500',
+                        reconciliationError ? 'border-red-400' : 'border-zinc-200',
+                      )}
+                      placeholder={txn.total}
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    value={reconciliationReason}
+                    onChange={(e) => setReconciliationReason(e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-white border border-zinc-200 rounded-md focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+                    placeholder="Reason, e.g. Global Payments mismatch"
+                  />
+                  <textarea
+                    rows={2}
+                    value={reconciliationNote}
+                    onChange={(e) => setReconciliationNote(e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-white border border-zinc-200 rounded-md focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 resize-none"
+                    placeholder="Optional note"
+                  />
+                  {reconciliationError && <p className="text-xs text-red-500">{reconciliationError}</p>}
+                  {txn.reconciliations?.[0] && (
+                    <div className="space-y-1 text-[11px] text-zinc-400">
+                      {(txn.reconciliations[0].reason || txn.reconciliations[0].note) && (
+                        <div className="rounded-md border border-violet-100 bg-violet-50 px-3 py-2 text-violet-900">
+                          {txn.reconciliations[0].reason && (
+                            <p><span className="font-medium">Reason:</span> {txn.reconciliations[0].reason}</p>
+                          )}
+                          {txn.reconciliations[0].note && (
+                            <p className="mt-0.5 whitespace-pre-wrap"><span className="font-medium">Note:</span> {txn.reconciliations[0].note}</p>
+                          )}
+                        </div>
+                      )}
+                      <p>
+                        Last edit {formatDatetime(txn.reconciliations[0].createdAt)} by {toTitleCase(txn.reconciliations[0].createdByNickname ?? txn.reconciliations[0].createdByFullName ?? txn.reconciliations[0].createdByEmail ?? 'Superadmin')}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Items */}
-              {editDraftItems.length > 0 && (
+              {editTab === 'items' && editDraftItems.length > 0 && (
                 <div>
                   <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">Items</p>
                   <div className="space-y-3">
@@ -1533,12 +1665,12 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                 </div>
               )}
 
-              <div className="flex gap-2 pt-1">
+              <div className="flex gap-2 pt-1 mt-auto">
                 <Button
                   variant="secondary"
                   size="sm"
                   className="flex-1"
-                  disabled={editTxnMut.isPending}
+                  disabled={editTxnMut.isPending || reconcileTxnMut.isPending}
                   onClick={() => setEditTxnOpen(false)}
                 >
                   Cancel
@@ -1547,7 +1679,7 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                   variant="dark"
                   size="sm"
                   className="flex-1"
-                  disabled={editTxnMut.isPending}
+                  disabled={editTxnMut.isPending || reconcileTxnMut.isPending}
                   onClick={() => {
                     const origItems = (txn.items ?? []).filter((i) => i.status !== 'cancelled');
                     const origPayments = txn.payments ?? [];
@@ -1565,26 +1697,44 @@ export default function TransactionDetailPage({ params }: { params: Promise<{ id
                         draft.referenceNumber.trim() !== (orig.referenceNumber ?? '') ||
                         draft.cardBank !== (orig.cardBank ?? '');
                     });
-                    if (!itemChanged && !paymentChanged) {
+                    const reconciliationChanged = hasCardPayment && reconciledAmount !== (txn.reconciledAmount ?? '');
+                    if (!itemChanged && !paymentChanged && !reconciliationChanged) {
                       toast.info('No changes to save');
                       return;
                     }
-                    editTxnMut.mutate({
-                      items: editDraftItems.map((i) => ({
-                        id: i.id,
-                        ...(i.shoeDescription.trim() && { shoeDescription: i.shoeDescription.trim() }),
-                        ...(i.serviceId && i.serviceId !== '__none__' && { serviceId: parseInt(i.serviceId, 10) }),
-                      })),
-                      payments: editDraftPayments.map((p) => ({
-                        id: p.id,
-                        method: p.method,
-                        ...(p.referenceNumber.trim() && { referenceNumber: p.referenceNumber.trim() }),
-                        ...(p.cardBank && { cardBank: p.cardBank }),
-                      })),
-                    });
+                    if (reconciliationChanged) {
+                      const amt = parseFloat(reconciledAmount);
+                      if (isNaN(amt) || amt <= 0) {
+                        setEditTab('payments');
+                        setReconciliationError('Enter a valid amount');
+                        return;
+                      }
+                    }
+                    if (itemChanged || paymentChanged) {
+                      editTxnMut.mutate({
+                        items: editDraftItems.map((i) => ({
+                          id: i.id,
+                          ...(i.shoeDescription.trim() && { shoeDescription: i.shoeDescription.trim() }),
+                          ...(i.serviceId && i.serviceId !== '__none__' && { serviceId: parseInt(i.serviceId, 10) }),
+                        })),
+                        payments: editDraftPayments.map((p) => ({
+                          id: p.id,
+                          method: p.method,
+                          ...(p.referenceNumber.trim() && { referenceNumber: p.referenceNumber.trim() }),
+                          ...(p.cardBank && { cardBank: p.cardBank }),
+                        })),
+                      });
+                    }
+                    if (reconciliationChanged) {
+                      reconcileTxnMut.mutate({
+                        reconciledAmount,
+                        ...(reconciliationReason.trim() && { reason: reconciliationReason.trim() }),
+                        ...(reconciliationNote.trim() && { note: reconciliationNote.trim() }),
+                      });
+                    }
                   }}
                 >
-                  {editTxnMut.isPending ? <Spinner /> : 'Save Changes'}
+                  {editTxnMut.isPending || reconcileTxnMut.isPending ? <Spinner /> : 'Save Changes'}
                 </Button>
               </div>
             </div>

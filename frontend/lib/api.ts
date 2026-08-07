@@ -120,6 +120,11 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(body),
       }),
+    reconcile: (id: number, body: { reconciledAmount: string; reason?: string; note?: string }) =>
+      apiFetch<Transaction>(`/transactions/${id}/reconciliation`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
     updatePaymentMethod: (txnId: number, paymentId: number, body: { method: string; referenceNumber?: string; cardBank?: string }) =>
       apiFetch<ClaimPayment & { bankDepositWarning: boolean }>(`/transactions/${txnId}/payments/${paymentId}/method`, {
         method: 'PATCH',
