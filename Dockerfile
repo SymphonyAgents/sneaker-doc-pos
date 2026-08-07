@@ -1,9 +1,9 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Copy frontend package.json and install with npm (not pnpm - avoids symlink issues)
-COPY frontend/package.json ./
-RUN npm install
+# Copy frontend package manifests and install deterministically with npm
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
 
 # Copy source and build
 COPY frontend ./

@@ -1,9 +1,11 @@
 # AGENTS.md — SneakerPOS
 
+> Auto-maintained by Aria. Last updated: 2026-08-07 12:48 PHT.
+
 ## Project Overview
 SneakerPOS is a point-of-sale system for a sneaker cleaning shop. pnpm monorepo with two packages:
 - `backend/` — NestJS 11 + Drizzle ORM + Supabase Auth
-- `frontend/` — Next.js 15 App Router + TanStack Query + shadcn/ui + Tailwind CSS v4
+- `frontend/` — Next.js 16 App Router + TanStack Query + shadcn/ui + Tailwind CSS v4
 
 Database is Supabase Postgres. Auth is Supabase (Google OAuth + JWT).
 
@@ -80,7 +82,8 @@ frontend/
 - **Money**: all monetary values stored as `bigint` in centavos (×100,000). Use `toScaled()` before DB writes and `fromScaled()` after reads. `AMOUNT_CONVERSION_RATE=100000`. Never store or return raw centavo values to the frontend.
 - **Audit**: call `this.audit.log(...)` after any meaningful mutation. `AuditModule` is `@Global()` — inject `AuditService` directly, no module import needed.
 - **Schema**: defined in `backend/src/db/schema.ts` using Drizzle. Relations are for query builder only — actual FK constraints are inline on columns via `.references()`.
-- **Migrations**: `pnpm db:generate` creates SQL files in `backend/migrations/`. `pnpm db:migrate` runs them. **NOTE: drizzle-kit is broken for squash migrations** (`checkValue.replace` TypeError). Apply schema changes directly via `psql ALTER TABLE` statements for now.
+- **Migrations**: `pnpm db:generate` creates SQL files in `backend/migrations/`. `pnpm db:migrate` runs them. **NOTE: drizzle-kit is broken for squash migrations** (`checkValue.replace` TypeError). Apply schema changes directly via `psql ALTER TABLE` statements for now. Production deploys that touch schema must apply the matching `backend/migrations/*.sql` file before code rollout.
+- **Drizzle version**: backend uses `drizzle-orm@0.45.2` to clear the identifier-escaping SQL injection advisory. Check generated SQL carefully after future Drizzle upgrades.
 - **TypeScript**: `noImplicitAny: false`, `strictNullChecks: true`. Module system is `nodenext`.
 - **Formatting**: Prettier with `singleQuote: true`, `trailingComma: 'all'`.
 
@@ -160,6 +163,10 @@ Monthly deposit tracking per payment method (GCash, Cash, Card, Bank Deposit).
 - `frontend/components/deposits/DepositHistoryDialog.tsx` — shows deposit history per method
 - Dashboard collection channel strip — each method card has `+ Add` button that opens deposit input dialog
 - `frontend/hooks/useDepositsQuery.ts` — `useDepositsQuery(year, month, branchId)` + `useUpsertDepositMutation`
+
+## Card Payment Reconciliation
+
+Superadmins can reconcile card-paid transactions through `PATCH /transactions/:id/reconciliation`. The feature stores `transactions.reconciled_amount` plus history rows in `transaction_reconciliations`, exposed on transaction details and used by collections/reporting totals for card payments. Apply `backend/migrations/0021_transaction_reconciliation.sql` before deploying this code.
 
 ## Staff Management
 
@@ -244,7 +251,7 @@ Photos (before/after images per transaction item) use a **presigned URL pattern*
 - **Price snapshots**: `transaction_items.price` is a snapshot. Don't join against `services.price` for historical transaction values.
 - **Audit log immutability**: never add update/delete operations on `audit_log`. `performedBy` has no FK constraint intentionally.
 - **drizzle-kit migrate is broken**: `checkValue.replace` TypeError on squash migrations. Apply all schema changes via `psql ALTER TABLE` directly against the DB.
-- **DB changes are not deployed automatically**: deploying code does not apply DB migrations. Run `ALTER TABLE` statements manually in Supabase Dashboard SQL Editor against production before or alongside deploying.
+- **DB changes are not deployed automatically**: deploying code does not apply DB migrations. Run `ALTER TABLE` statements manually in Supabase Dashboard SQL Editor or via `psql` against production before or alongside deploying. For card reconciliation, confirm `transactions.reconciled_amount` and `transaction_reconciliations` exist before backend rollout.
 - **Barangay onChange override**: when using `register('customerBarangay')` with a custom `onChange`, destructure first — `const { onChange, ...rest } = register(...)` — then call `onChange(e)` inside your custom handler. Spreading `{...register(...)}` then adding `onChange` silently overrides RHF's handler.
 - **BarcodeDetector not in TS lib**: declare it manually with `declare class BarcodeDetector { ... }`. Do not install a type package — just the local declaration is enough.
 - **Photo upload — never skip compression**: bypassing `imageCompression` for "small" files uploads non-JPEG bytes with a JPEG Content-Type header, corrupting the image. Always run the compression step.
