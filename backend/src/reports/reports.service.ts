@@ -223,6 +223,8 @@ export class ReportsService {
 
   private async getCardReconciliationLoss(year: number, month: number, branchId?: number) {
     const { from, to } = getDateRange(year, month);
+    const fromParam = from.toISOString();
+    const toParam = to.toISOString();
     const conditions = [
       isNull(transactions.deletedAt),
       ne(transactions.status, 'cancelled'),
@@ -237,8 +239,8 @@ export class ReportsService {
             WHERE cp2.transaction_id = ${transactions.id}
               AND cp2.method = 'card'
           )
-          AND cp.paid_at >= ${from}
-          AND cp.paid_at <= ${to}
+          AND cp.paid_at >= ${fromParam}
+          AND cp.paid_at <= ${toParam}
       )`,
     ];
     if (branchId) conditions.push(eq(transactions.branchId, branchId));
