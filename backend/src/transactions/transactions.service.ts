@@ -1196,6 +1196,8 @@ export class TransactionsService {
             const lastDay = new Date(year, month, 0).getDate();
             return new Date(`${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}T23:59:59`);
           })();
+      const fromParam = from.toISOString();
+      const toParam = to.toISOString();
       conditions.push(sql`EXISTS (
         SELECT 1 FROM ${claimPayments} cp
         WHERE cp.transaction_id = ${transactions.id}
@@ -1205,8 +1207,8 @@ export class TransactionsService {
             WHERE cp2.transaction_id = ${transactions.id}
               AND cp2.method = 'card'
           )
-          AND cp.paid_at >= ${from}
-          AND cp.paid_at <= ${to}
+          AND cp.paid_at >= ${fromParam}
+          AND cp.paid_at <= ${toParam}
       )` as ReturnType<typeof eq>);
     } else {
       conditions.push(sql`EXISTS (
