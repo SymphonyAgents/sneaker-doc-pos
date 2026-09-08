@@ -1,5 +1,14 @@
 import { ReportsService } from './reports.service';
 
+function containsDate(value: unknown, seen = new WeakSet<object>()): boolean {
+  if (value instanceof Date) return true;
+  if (value === null || value === undefined || typeof value !== 'object') return false;
+  if (seen.has(value)) return false;
+
+  seen.add(value);
+  return Object.values(value as Record<string, unknown>).some((child) => containsDate(child, seen));
+}
+
 function createQueryChain(result: unknown) {
   const chain: Record<string, jest.Mock> & { then?: Promise<unknown>['then'] } = {
     from: jest.fn(() => chain),
@@ -37,8 +46,13 @@ describe('ReportsService getSummary', () => {
       ],
       [{ total: 7000000 }],
     ];
+    const chains: ReturnType<typeof createQueryChain>[] = [];
     const db = {
-      select: jest.fn(() => createQueryChain(results.shift() ?? [])),
+      select: jest.fn(() => {
+        const chain = createQueryChain(results.shift() ?? []);
+        chains.push(chain);
+        return chain;
+      }),
     };
     const service = new ReportsService({ db } as never);
 
@@ -55,6 +69,7 @@ describe('ReportsService getSummary', () => {
     expect(summary.net).toBe('1870.00');
     expect(summary.txnList[0].total).toBe('2000.00');
     expect(summary.txnList[0].paid).toBe('2000.00');
+    expect(containsDate(chains[6].where.mock.calls[0][0])).toBe(false);
   });
 
   it('shows an expense row for reconciliation-only periods', async () => {
