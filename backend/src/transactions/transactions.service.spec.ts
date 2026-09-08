@@ -11,6 +11,15 @@ function containsCardFeeExclusion(value: unknown, seen = new WeakSet<object>()):
   return Object.values(record).some((child) => containsCardFeeExclusion(child, seen));
 }
 
+function containsDate(value: unknown, seen = new WeakSet<object>()): boolean {
+  if (value instanceof Date) return true;
+  if (value === null || value === undefined || typeof value !== 'object') return false;
+  if (seen.has(value)) return false;
+
+  seen.add(value);
+  return Object.values(value as Record<string, unknown>).some((child) => containsDate(child, seen));
+}
+
 function createQueryChain(result: unknown) {
   const chain: Record<string, jest.Mock> & { then?: Promise<unknown>['then'] } = {
     from: jest.fn(() => chain),
@@ -95,6 +104,7 @@ describe('TransactionsService collection reporting', () => {
 
     expect(summary.card).toBe('1870.00');
     expect(summary.cardFee).toBe('60.00');
+    expect(containsDate(chains[1].where.mock.calls[0][0])).toBe(false);
   });
 
   it('keeps dashboard gross revenue unchanged and counts reconciliation loss as expense', async () => {
