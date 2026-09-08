@@ -77,29 +77,21 @@ function mapTxn<T extends { total: number; paid: number; reconciledAmount?: numb
 }
 
 function cardReportingAmountSql() {
+  return sql<number>`${claimPayments.amount}`;
+}
+
+function cardReconciliationLossSql() {
   return sql<number>`CASE
     WHEN ${claimPayments.method} = 'card'
       AND ${transactions.reconciledAmount} IS NOT NULL
+      AND ${transactions.reconciledAmount} < ${transactions.total}
       AND ${claimPayments.id} = (
         SELECT MIN(cp.id) FROM ${claimPayments} cp
         WHERE cp.transaction_id = ${transactions.id}
           AND cp.method = 'card'
       )
-      THEN ${claimPayments.amount} + (${transactions.reconciledAmount} - ${transactions.total})
-    ELSE ${claimPayments.amount}
-  END`;
-}
-
-function transactionReportingTotalSql(fallback: typeof transactions.total | typeof transactions.paid) {
-  return sql<number>`CASE
-    WHEN ${transactions.reconciledAmount} IS NOT NULL
-      AND EXISTS (
-        SELECT 1 FROM ${claimPayments} cp
-        WHERE cp.transaction_id = ${transactions.id}
-          AND cp.method = 'card'
-      )
-      THEN ${transactions.reconciledAmount}
-    ELSE ${fallback}
+      THEN ${transactions.total} - ${transactions.reconciledAmount}
+    ELSE 0
   END`;
 }
 
@@ -821,6 +813,8 @@ export class TransactionsService {
       .where(and(...conditions))
       .groupBy(claimPayments.method);
 
+    const reconciliationLoss = await this.getCardReconciliationLoss(year, month, branchId);
+
     // NOTE: PostgreSQL SUM() returns strings via Drizzle — always coerce with Number()
     const collected: Record<string, number> = {
       cash: 0,
@@ -833,8 +827,8 @@ export class TransactionsService {
       collected[r.method] = Number(r.total);
       if (r.method === 'card') fees.card = Number(r.totalFee);
     });
-    // Card net = gross collected - fee paid to bank
-    collected.card = Math.max(0, collected.card - fees.card);
+    // Card channel shows settled card cash after bank fee and reconciliation loss.
+    collected.card = Math.max(0, collected.card - fees.card - reconciliationLoss);
 
     // Fetch bank deposit total separately (the deposits table tracks bank_deposit
     // amounts directly). Source-channel deductions are unreliable (upsertSingle
@@ -946,6 +940,7 @@ export class TransactionsService {
         originalAmount: claimPayments.amount,
         fee: claimPayments.fee,
         feePercent: claimPayments.feePercent,
+        reconciliationLoss: cardReconciliationLossSql(),
         paidAt: claimPayments.paidAt,
         txnNumber: transactions.number,
         customerName: transactions.customerName,
@@ -958,7 +953,8 @@ export class TransactionsService {
       ...r,
       amount: fromScaled(r.amount),
       fee: fromScaled(Number(r.fee ?? 0)),
-      net: fromScaled(r.amount - Number(r.fee ?? 0)),
+      reconciliationLoss: fromScaled(Number(r.reconciliationLoss ?? 0)),
+      net: fromScaled(r.amount - Number(r.fee ?? 0) - Number(r.reconciliationLoss ?? 0)),
     }));
   }
 
@@ -1013,6 +1009,7 @@ export class TransactionsService {
       statusRows,
       collectionsResult,
       expenseRow,
+      reconciliationLossRow,
       todayCollectionRows,
       dailyRevenueRow,
       dailyCountRow,
@@ -1022,8 +1019,8 @@ export class TransactionsService {
       // 1. Monthly revenue + paid from active (non-cancelled) transactions
       this.drizzle.db
         .select({
-          totalRevenue: sql<number>`COALESCE(SUM(${transactionReportingTotalSql(transactions.total)}), 0)`,
-          totalPaid: sql<number>`COALESCE(SUM(${transactionReportingTotalSql(transactions.paid)}), 0)`,
+          totalRevenue: sql<number>`COALESCE(SUM(${transactions.total}), 0)`,
+          totalPaid: sql<number>`COALESCE(SUM(${transactions.paid}), 0)`,
           count: sql<number>`COUNT(*)`,
         })
         .from(transactions)
@@ -1070,10 +1067,13 @@ export class TransactionsService {
           .where(and(...baseConds));
       })(),
 
-      // 5. Today's collections (list)
+      // 5. Reconciliation losses count as reporting expenses without creating expense rows
+      this.getCardReconciliationLoss(year, month, branchId),
+
+      // 6. Today's collections (list)
       this.todayCollections(branchId),
 
-      // 6. Daily revenue stats (for staff view)
+      // 7. Daily revenue stats (for staff view)
       (async () => {
         const today = new Date().toISOString().split('T')[0];
         const dailyConds = [
@@ -1084,8 +1084,8 @@ export class TransactionsService {
         if (branchId) dailyConds.push(eq(transactions.branchId, branchId));
         return this.drizzle.db
           .select({
-            totalRevenue: sql<number>`COALESCE(SUM(${transactionReportingTotalSql(transactions.total)}), 0)`,
-            totalPaid: sql<number>`COALESCE(SUM(${transactionReportingTotalSql(transactions.paid)}), 0)`,
+            totalRevenue: sql<number>`COALESCE(SUM(${transactions.total}), 0)`,
+            totalPaid: sql<number>`COALESCE(SUM(${transactions.paid}), 0)`,
           })
           .from(transactions)
           .where(and(...dailyConds));
@@ -1134,7 +1134,7 @@ export class TransactionsService {
     const totalRevenue = Number(revenueRow[0]?.totalRevenue ?? 0);
     const totalPaid = Number(revenueRow[0]?.totalPaid ?? 0);
     const txnCount = Number(revenueRow[0]?.count ?? 0);
-    const totalExpenses = Number(expenseRow[0]?.total ?? 0);
+    const totalExpenses = Number(expenseRow[0]?.total ?? 0) + Number(reconciliationLossRow ?? 0);
 
     const byStatus: Record<string, number> = {};
     let totalAllStatuses = 0;
@@ -1176,6 +1176,54 @@ export class TransactionsService {
         totalBalance: fromScaled(dailyRev - dailyPaid),
       },
     };
+  }
+
+  private async getCardReconciliationLoss(year: number, month: number, branchId?: number) {
+    const conditions: ReturnType<typeof eq>[] = [
+      isNull(transactions.deletedAt) as ReturnType<typeof eq>,
+      ne(transactions.status, 'cancelled') as ReturnType<typeof eq>,
+      isNotNull(transactions.reconciledAmount) as ReturnType<typeof eq>,
+      sql`${transactions.reconciledAmount} < ${transactions.total}` as ReturnType<typeof eq>,
+    ];
+
+    if (year !== 0) {
+      const from = month === 0
+        ? new Date(`${year}-01-01T00:00:00`)
+        : new Date(`${year}-${String(month).padStart(2, '0')}-01T00:00:00`);
+      const to = month === 0
+        ? new Date(`${year}-12-31T23:59:59`)
+        : (() => {
+            const lastDay = new Date(year, month, 0).getDate();
+            return new Date(`${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}T23:59:59`);
+          })();
+      conditions.push(sql`EXISTS (
+        SELECT 1 FROM ${claimPayments} cp
+        WHERE cp.transaction_id = ${transactions.id}
+          AND cp.method = 'card'
+          AND cp.id = (
+            SELECT MIN(cp2.id) FROM ${claimPayments} cp2
+            WHERE cp2.transaction_id = ${transactions.id}
+              AND cp2.method = 'card'
+          )
+          AND cp.paid_at >= ${from}
+          AND cp.paid_at <= ${to}
+      )` as ReturnType<typeof eq>);
+    } else {
+      conditions.push(sql`EXISTS (
+        SELECT 1 FROM ${claimPayments} cp
+        WHERE cp.transaction_id = ${transactions.id}
+          AND cp.method = 'card'
+      )` as ReturnType<typeof eq>);
+    }
+
+    if (branchId) conditions.push(eq(transactions.branchId, branchId));
+
+    const [row] = await this.drizzle.db
+      .select({ total: sql<number>`COALESCE(SUM(${transactions.total} - ${transactions.reconciledAmount}), 0)` })
+      .from(transactions)
+      .where(and(...conditions));
+
+    return Number(row?.total ?? 0);
   }
 
   private getDateRange(year: number, month: number) {
