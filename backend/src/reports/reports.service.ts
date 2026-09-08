@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, desc, eq, gte, inArray, isNull, lte, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, sql } from 'drizzle-orm';
 import { DrizzleService } from '../db/drizzle.service';
 import {
   transactions,
@@ -12,17 +12,7 @@ import {
 import { fromScaled } from '../utils/money';
 
 function cardReportingAmountSql() {
-  return sql<number>`CASE
-    WHEN ${claimPayments.method} = 'card'
-      AND ${transactions.reconciledAmount} IS NOT NULL
-      AND ${claimPayments.id} = (
-        SELECT MIN(cp.id) FROM ${claimPayments} cp
-        WHERE cp.transaction_id = ${transactions.id}
-          AND cp.method = 'card'
-      )
-      THEN ${claimPayments.amount} + (${transactions.reconciledAmount} - ${transactions.total})
-    ELSE ${claimPayments.amount}
-  END`;
+  return sql<number>`${claimPayments.amount}`;
 }
 
 function getDateRange(year: number, month: number) {
@@ -78,6 +68,7 @@ export class ReportsService {
       shoesCountRow,
       topServicesRows,
       txnListRows,
+      reconciliationLoss,
     ] = await Promise.all([
       // Collections by payment method
       this.drizzle.db
@@ -155,7 +146,6 @@ export class ReportsService {
           status: transactions.status,
           total: transactions.total,
           paid: transactions.paid,
-          reconciledAmount: transactions.reconciledAmount,
           itemCount: sql<number>`COUNT(${transactionItems.id})`,
         })
         .from(transactions)
@@ -163,6 +153,8 @@ export class ReportsService {
         .where(and(...txnConditions))
         .groupBy(transactions.id)
         .orderBy(desc(transactions.createdAt)),
+
+      this.getCardReconciliationLoss(year, month, branchId),
     ]);
 
     const collections: Record<string, string> = {
@@ -179,7 +171,7 @@ export class ReportsService {
       0,
     );
 
-    const expensesScaledTotal = expenseRows.reduce((s, e) => s + e.amount, 0);
+    const expensesScaledTotal = expenseRows.reduce((s, e) => s + e.amount, 0) + reconciliationLoss;
     const expensesTotal = fromScaled(expensesScaledTotal);
     const expensesMapped = expenseRows.map((e) => ({ ...e, amount: fromScaled(e.amount) }));
 
@@ -203,10 +195,40 @@ export class ReportsService {
       })),
       txnList: txnListRows.map((r) => ({
         ...r,
-        total: fromScaled(r.reconciledAmount ?? r.total),
-        paid: fromScaled(r.reconciledAmount ?? r.paid),
+        total: fromScaled(r.total),
+        paid: fromScaled(r.paid),
         itemCount: Number(r.itemCount),
       })),
     };
+  }
+
+  private async getCardReconciliationLoss(year: number, month: number, branchId?: number) {
+    const { from, to } = getDateRange(year, month);
+    const conditions = [
+      isNull(transactions.deletedAt),
+      ne(transactions.status, 'cancelled'),
+      isNotNull(transactions.reconciledAmount),
+      sql`${transactions.reconciledAmount} < ${transactions.total}`,
+      sql`EXISTS (
+        SELECT 1 FROM ${claimPayments} cp
+        WHERE cp.transaction_id = ${transactions.id}
+          AND cp.method = 'card'
+          AND cp.id = (
+            SELECT MIN(cp2.id) FROM ${claimPayments} cp2
+            WHERE cp2.transaction_id = ${transactions.id}
+              AND cp2.method = 'card'
+          )
+          AND cp.paid_at >= ${from}
+          AND cp.paid_at <= ${to}
+      )`,
+    ];
+    if (branchId) conditions.push(eq(transactions.branchId, branchId));
+
+    const [row] = await this.drizzle.db
+      .select({ total: sql<number>`COALESCE(SUM(${transactions.total} - ${transactions.reconciledAmount}), 0)` })
+      .from(transactions)
+      .where(and(...conditions));
+
+    return Number(row?.total ?? 0);
   }
 }
