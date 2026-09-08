@@ -173,7 +173,26 @@ export class ReportsService {
 
     const expensesScaledTotal = expenseRows.reduce((s, e) => s + e.amount, 0) + reconciliationLoss;
     const expensesTotal = fromScaled(expensesScaledTotal);
-    const expensesMapped = expenseRows.map((e) => ({ ...e, amount: fromScaled(e.amount) }));
+    const expensesMapped = [
+      ...expenseRows.map((e) => ({ ...e, amount: fromScaled(e.amount) })),
+      ...(reconciliationLoss > 0
+        ? [{
+            id: -1,
+            dateKey: toDate,
+            category: 'Card Reconciliation Loss',
+            note: 'Difference between original card total and reconciled amount',
+            method: 'card',
+            source: 'system',
+            amount: fromScaled(reconciliationLoss),
+            staffId: null,
+            photoUrl: null,
+            paymentId: null,
+            branchId: branchId ?? null,
+            createdAt: new Date(),
+            deletedAt: null,
+          }]
+        : []),
+    ];
 
     const txnCounts = { total: 0, claimed: 0, cancelled: 0, pending: 0, in_progress: 0, done: 0 };
     txnStatusRows.forEach((r) => {
