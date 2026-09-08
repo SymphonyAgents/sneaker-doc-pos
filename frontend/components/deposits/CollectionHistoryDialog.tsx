@@ -36,7 +36,7 @@ export function CollectionHistoryDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="bg-white sm:max-w-2xl flex flex-col max-h-[80vh]">
+      <DialogContent className="bg-white sm:max-w-3xl flex flex-col max-h-[80vh]">
         <DialogHeader>
           <DialogTitle className="text-base">{methodLabel} Collection History</DialogTitle>
           <DialogDescription className="text-xs text-zinc-400">{monthLabel}</DialogDescription>
@@ -53,6 +53,7 @@ export function CollectionHistoryDialog({
             const isCard = method === 'card';
             const totalGross = data.reduce((s, e) => s + parseFloat(e.amount), 0);
             const totalFee = isCard ? data.reduce((s, e) => s + parseFloat(e.fee ?? '0'), 0) : 0;
+            const totalReconciliationLoss = isCard ? data.reduce((s, e) => s + parseFloat(e.reconciliationLoss ?? '0'), 0) : 0;
             const totalNet = isCard ? data.reduce((s, e) => s + parseFloat(e.net ?? e.amount), 0) : totalGross;
             return (
               <table className="w-full text-xs">
@@ -62,6 +63,7 @@ export function CollectionHistoryDialog({
                     <th className="py-2.5 text-left font-medium text-zinc-400">Customer</th>
                     <th className="py-2.5 text-right font-medium text-zinc-400">{isCard ? 'Gross' : 'Amount'}</th>
                     {isCard && <th className="py-2.5 text-right font-medium text-zinc-400">Fee</th>}
+                    {isCard && <th className="py-2.5 text-right font-medium text-zinc-400">Reconciliation</th>}
                     {isCard && <th className="py-2.5 text-right font-medium text-zinc-400">Net</th>}
                     <th className="py-2.5 text-right font-medium text-zinc-400">Date</th>
                   </tr>
@@ -82,6 +84,11 @@ export function CollectionHistoryDialog({
                         </td>
                       )}
                       {isCard && (
+                        <td className="py-2.5 text-right font-mono text-red-500">
+                          -{formatPeso(entry.reconciliationLoss ?? '0')}
+                        </td>
+                      )}
+                      {isCard && (
                         <td className="py-2.5 text-right font-mono text-emerald-600 font-medium">
                           {formatPeso(entry.net ?? entry.amount)}
                         </td>
@@ -97,6 +104,7 @@ export function CollectionHistoryDialog({
                     <td colSpan={2} className="py-2.5 text-xs font-semibold text-zinc-500">Total</td>
                     <td className="py-2.5 text-right font-mono font-semibold text-zinc-950">{formatPeso(String(totalGross))}</td>
                     {isCard && <td className="py-2.5 text-right font-mono font-semibold text-red-500">-{formatPeso(String(totalFee))}</td>}
+                    {isCard && <td className="py-2.5 text-right font-mono font-semibold text-red-500">-{formatPeso(String(totalReconciliationLoss))}</td>}
                     {isCard && <td className="py-2.5 text-right font-mono font-semibold text-emerald-600">{formatPeso(String(totalNet))}</td>}
                     <td />
                   </tr>
