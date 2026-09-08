@@ -49,8 +49,34 @@ describe('ReportsService getSummary', () => {
     expect(collections.card).toBe('2000.00');
     expect(collections.total).toBe('2000.00');
     expect(summary.expenses.total).toBe('130.00');
+    expect(summary.expenses.items).toHaveLength(2);
+    expect(summary.expenses.items[1].category).toBe('Card Reconciliation Loss');
+    expect(summary.expenses.items[1].amount).toBe('70.00');
     expect(summary.net).toBe('1870.00');
     expect(summary.txnList[0].total).toBe('2000.00');
     expect(summary.txnList[0].paid).toBe('2000.00');
+  });
+
+  it('shows an expense row for reconciliation-only periods', async () => {
+    const results = [
+      [{ method: 'card', total: 200000000 }],
+      [],
+      [{ status: 'claimed', count: 1 }],
+      [{ count: 2 }],
+      [],
+      [],
+      [{ total: 7000000 }],
+    ];
+    const db = {
+      select: jest.fn(() => createQueryChain(results.shift() ?? [])),
+    };
+    const service = new ReportsService({ db } as never);
+
+    const summary = await service.getSummary(2026, 8);
+
+    expect(summary.expenses.total).toBe('70.00');
+    expect(summary.expenses.items).toHaveLength(1);
+    expect(summary.expenses.items[0].category).toBe('Card Reconciliation Loss');
+    expect(summary.expenses.items[0].amount).toBe('70.00');
   });
 });
