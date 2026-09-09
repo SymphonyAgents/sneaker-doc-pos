@@ -1,33 +1,39 @@
-# Theory: SneakerDoc Dashboard Reliability
+# Theory: SneakerDoc Request Reliability
 
 ## Problem
 
-The dashboard is a fan-out endpoint: a single request launches several financial summary queries in parallel. This makes correctness depend not only on the accounting formulas, but also on every query parameter crossing the ORM and database-driver boundary in a representation the driver can encode. A failure in one auxiliary calculation, such as card reconciliation loss, rejects the entire `Promise.all` and turns the dashboard into an HTTP 500 even when the other summaries are valid.
+SneakerDoc depends on several authenticated API calls during page bootstrap. The most important is `/users/me`, because `OnboardingCheck` blocks the application behind a full-screen loading overlay until that request settles. If the database path stalls, the browser receives no response and the interface appears blank even though the frontend bundle, authentication middleware, and Cloud Run startup probe are healthy.
+
+The September 9 incident affected `/users/me`, branches, recent transactions, upcoming transactions, deposits, and other unrelated routes. Each request ended as a Cloud Run 504 after approximately 300 seconds. PostgreSQL then reported error code `57014`, `canceling statement due to statement timeout`, even for a simple primary-key user lookup. This proves the failure class was a shared database-path stall, not dashboard query complexity and not the earlier JavaScript Date serialization defect.
 
 ## Operating Theory
 
-The dated dashboard path differs from the all-time path because it adds date predicates to the card reconciliation query. In production commit `87d2092`, those predicates interpolated JavaScript `Date` instances into a raw SQL fragment. Drizzle passed the values to the `postgres` driver without converting them to the expected string representation, and the driver threw `ERR_INVALID_ARG_TYPE` before PostgreSQL executed the query. The all-time path avoided those parameters, explaining why `year=0&month=0` returned 200 while dated months returned 500.
+Service readiness has three distinct layers:
 
-Commit `5702bc9` moves the conversion to the application boundary by serializing both dates with `toISOString()` before raw SQL interpolation. The regression tests inspect the generated query expressions for both dashboard and reports and reject any remaining `Date` object. This is the correct leverage point because it preserves the financial query and date range while making the driver contract explicit.
+1. Cloud Run control-plane readiness proves that a container started and accepted TCP connections.
+2. Fast unauthenticated 401 responses prove routing and the authentication boundary.
+3. Fast authenticated responses prove the Supabase token and PostgreSQL paths that real users need.
 
-The backend now serves revision `sneaker-doc-pos-api-00054-hs8`, built from `5702bc9`, at 100 percent traffic. The new revision starts cleanly and no longer emits the former driver exception during available smoke checks.
+Only the third layer verifies application recovery. During this incident, layers one and two remained healthy while authenticated database work was blocked. The live backend used the Supabase transaction pooler on port 6543 through a long-lived postgres.js client. The exact initiating condition, such as a pooler impairment, stale connection, exhausted client pool, or database lock, was not captured. The application made the impact worse by allowing requests to occupy Cloud Run slots for five minutes and by giving the browser no deadline or error state.
 
 ## Strategy
 
-Treat production behavior and deployed provenance as separate from repository state. First prove the live failure from request and application logs, then map the serving image digest back to its source commit, and only then compare that source against current `main`. When the minimal correction already exists in git, avoid a duplicate code change: verify the correction with targeted tests and a production build, deploy only the affected backend, and prove recovery using fresh requests and revision-scoped logs.
+Recovery and prevention are separate actions.
 
-The production image is built from a clean archive of the exact commit rather than the working directory. This prevents local diagnostic and theory files from entering the build context and makes the deployed source reproducible. The frontend, database schema, migrations, and environment remain unchanged because none are required by the root cause.
+For immediate recovery, force a backend-only Cloud Run revision while preserving the exact serving image. This replaces process-local PostgreSQL connections without changing application code or frontend traffic. Recovery is considered proven only when authenticated `/users/me`, `/branches`, and `/transactions/recent` requests complete normally on the new revision and revision-scoped logs remain free of fresh 300-second 504s.
 
-The post-deploy standard is stronger than service health alone. The new revision must receive traffic, the backend auth boundary must remain fail-closed, and revision logs must be free of the exact `Date` encoding exception. Direct end-to-end proof still requires an authenticated dated dashboard request, because an unauthenticated 401 proves routing and auth behavior but does not execute the corrected database query.
+For prevention, apply limits at both owning boundaries:
 
-## Key Discoveries
+- The database client sets bounded connection establishment, PostgreSQL statement execution, idle connection recycling, and maximum connection lifetime while retaining `prepare: false` for PgBouncer transaction mode.
+- The shared frontend API transport aborts requests after a finite deadline and preserves caller-provided abort signals.
+- `OnboardingCheck` owns the user-visible bootstrap failure state. It replaces the indefinite spinner with a clear retry action when current-user loading fails.
 
-Production had been serving backend revision `sneaker-doc-pos-api-00053-l9z`, built from commit `87d2092`, while `origin/main` was already at `5702bc9`. The incident was therefore a deployment gap, not an unfixed source defect on `main`.
+These changes do not alter authentication, authorization, schema, query shape, accounting, pagination, or API response contracts. They convert an indefinite apparent freeze into a bounded, recoverable failure and reduce the chance that stale process connections survive long enough to block an instance.
 
-The failure was isolated to dated queries. Production evidence showed repeated 500 responses for normal year/month requests and a 200 response for the all-time branch, matching the control flow in `getCardReconciliationLoss()`.
+## Verified State
 
-The exact hotfix delta also corrects the same parameter-boundary defect in the reports summary. Both regression suites pass, the backend production build succeeds, and production dependencies contain no high or critical vulnerabilities.
+PR #4 commit `5702bc9` is already deployed. Its Date serialization correction is not the cause of this database-path incident.
 
-## Open Questions
+A backend-only restart created revision `sneaker-doc-pos-api-00055-b22` with the same `5702bc9` image and 100 percent traffic. After the restart, authenticated production requests recovered: `/users/me`, `/branches`, `/transactions/recent`, `/transactions/dashboard`, `/transactions/upcoming`, and deposits returned 200 or 304 in approximately 0.2 to 1.3 seconds, with no revision-scoped errors in the sampled window.
 
-The remaining verification gap is the authenticated production path. The fresh browser session reaches the login page but has no production user session. A logged-in dashboard refresh must return a non-500 response on revision `sneaker-doc-pos-api-00054-hs8` to close the incident with direct end-to-end evidence.
+The durable timeout and retry changes remain subject to source review, commit, build, deployment, and post-deploy verification before they can be treated as production behavior.

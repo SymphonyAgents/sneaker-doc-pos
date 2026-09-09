@@ -4,11 +4,12 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
 import { useCurrentUserQuery } from '@/hooks/useCurrentUserQuery';
+import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 
 export function OnboardingCheck() {
   const router = useRouter();
-  const { data: user, isLoading } = useCurrentUserQuery();
+  const { data: user, isLoading, isError, isFetching, refetch } = useCurrentUserQuery();
 
   const isPending = !isLoading && !!user && user.status === 'pending';
   const isRejected = !isLoading && !!user && user.status === 'rejected';
@@ -35,6 +36,37 @@ export function OnboardingCheck() {
       router.push('/onboarding');
     }
   }, [isPending, isRejected, needsOnboarding, router]);
+
+  if (isError) {
+    return (
+      <div
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-white px-6"
+        role="alert"
+      >
+        <div className="max-w-sm text-center">
+          <h1 className="text-lg font-semibold text-zinc-950">Unable to load SneakerDoc</h1>
+          <p className="mt-2 text-sm text-zinc-500">
+            The server did not respond in time. Check your connection, then try again.
+          </p>
+          <Button
+            className="mt-5 min-h-11"
+            disabled={isFetching}
+            onClick={() => void refetch()}
+            type="button"
+          >
+            {isFetching ? (
+              <>
+                <Spinner size={16} />
+                Retrying...
+              </>
+            ) : (
+              'Try again'
+            )}
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading || needsOnboarding || isPending || isRejected) {
     return (
