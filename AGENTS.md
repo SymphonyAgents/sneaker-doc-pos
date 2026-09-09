@@ -1,6 +1,6 @@
 # AGENTS.md — SneakerPOS
 
-> Auto-maintained by Aria. Last updated: 2026-09-09 14:12 PHT.
+> Auto-maintained by Aria. Last updated: 2026-09-09 17:12 PHT.
 
 ## Project Overview
 SneakerPOS is a point-of-sale system for a sneaker cleaning shop. pnpm monorepo with two packages:
@@ -84,7 +84,8 @@ frontend/
 - **Schema**: defined in `backend/src/db/schema.ts` using Drizzle. Relations are for query builder only — actual FK constraints are inline on columns via `.references()`.
 - **Migrations**: `pnpm db:generate` creates SQL files in `backend/migrations/`. `pnpm db:migrate` runs them. **NOTE: drizzle-kit is broken for squash migrations** (`checkValue.replace` TypeError). Apply schema changes directly via `psql ALTER TABLE` statements for now. Production deploys that touch schema must apply the matching `backend/migrations/*.sql` file before code rollout.
 - **Drizzle version**: backend uses `drizzle-orm@0.45.2` to clear the identifier-escaping SQL injection advisory. Check generated SQL carefully after future Drizzle upgrades.
-- **Database timeouts**: `db/drizzle.service.ts` applies bounded connect and statement timeouts plus idle and maximum-lifetime recycling for Supabase PgBouncer connections. Keep `prepare: false` and update timeout values only through `db/db.constants.ts`.
+- **Database connection safety**: production uses the direct Supabase PostgreSQL endpoint from Secret Manager, not the transaction/session pooler. `db/drizzle.service.ts` caps each Cloud Run instance at 3 connections and applies bounded connect and statement timeouts plus idle and maximum-lifetime recycling. Keep `prepare: false` and update connection limits only through `db/db.constants.ts`.
+- **Cloud Run database alignment**: backend container concurrency is 20, request timeout is 30 seconds, and max instances is 5. Do not raise concurrency independently of the postgres.js pool and Supabase connection budget.
 - **TypeScript**: `noImplicitAny: false`, `strictNullChecks: true`. Module system is `nodenext`.
 - **Formatting**: Prettier with `singleQuote: true`, `trailingComma: 'all'`.
 
