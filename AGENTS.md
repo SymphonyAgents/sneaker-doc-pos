@@ -1,6 +1,6 @@
 # AGENTS.md — SneakerPOS
 
-> Auto-maintained by Aria. Last updated: 2026-08-07 12:48 PHT.
+> Auto-maintained by Aria. Last updated: 2026-09-09 14:12 PHT.
 
 ## Project Overview
 SneakerPOS is a point-of-sale system for a sneaker cleaning shop. pnpm monorepo with two packages:
@@ -84,11 +84,12 @@ frontend/
 - **Schema**: defined in `backend/src/db/schema.ts` using Drizzle. Relations are for query builder only — actual FK constraints are inline on columns via `.references()`.
 - **Migrations**: `pnpm db:generate` creates SQL files in `backend/migrations/`. `pnpm db:migrate` runs them. **NOTE: drizzle-kit is broken for squash migrations** (`checkValue.replace` TypeError). Apply schema changes directly via `psql ALTER TABLE` statements for now. Production deploys that touch schema must apply the matching `backend/migrations/*.sql` file before code rollout.
 - **Drizzle version**: backend uses `drizzle-orm@0.45.2` to clear the identifier-escaping SQL injection advisory. Check generated SQL carefully after future Drizzle upgrades.
+- **Database timeouts**: `db/drizzle.service.ts` applies bounded connect and statement timeouts plus idle and maximum-lifetime recycling for Supabase PgBouncer connections. Keep `prepare: false` and update timeout values only through `db/db.constants.ts`.
 - **TypeScript**: `noImplicitAny: false`, `strictNullChecks: true`. Module system is `nodenext`.
 - **Formatting**: Prettier with `singleQuote: true`, `trailingComma: 'all'`.
 
 ### Frontend
-- **All API calls go through `lib/api.ts`** — never raw `fetch()` in components.
+- **All API calls go through `lib/api.ts`** — never raw `fetch()` in components. The transport delegates to `lib/api-request.ts`, which enforces a finite AbortController deadline and preserves caller abort signals.
 - **All domain types in `lib/types.ts`** — never redeclare inline.
 - **TanStack Query for all server state** — `useState` only for ephemeral UI state (modals, filters).
 - **Query hooks in `hooks/use{Domain}Query.ts`** — one file per domain, export query keys alongside hooks. Never define `useQuery`/`useMutation` inline in page components.
@@ -125,7 +126,8 @@ frontend/
 
 ## Testing
 - Backend: Jest (`pnpm --filter backend test`). Test files: `*.spec.ts` in `src/`.
-- Frontend: `pnpm --filter frontend lint` for linting.
+- Frontend request transport: `cd frontend && npm test`.
+- Frontend type/build check: `cd frontend && npx tsc --noEmit && npm run build`.
 
 ## PH Address Fields
 
@@ -259,3 +261,5 @@ Photos (before/after images per transaction item) use a **presigned URL pattern*
 - **`SUPABASE_STORAGE_BUCKET` missing**: the presigned-url endpoint will throw at runtime if this env var is not set in `backend/.env`.
 - **`staff-documents` bucket must be public**: the `StaffDocumentsDialog` uses `getPublicUrl()` and stores permanent URLs. If the bucket is private, document links will 403. Create it as public in Supabase Storage dashboard.
 - **drizzle-kit generate is interactive**: `pnpm drizzle-kit generate` may prompt interactively for rename detection. Write manual SQL migrations and register them in `migrations/meta/_journal.json` instead. Run `pnpm drizzle-kit migrate` to apply.
+- **Cloud Run Ready does not prove database health**: validate authenticated `/users/me` and at least one unrelated data route. Fast OPTIONS and unauthenticated 401 responses do not exercise PostgreSQL.
+- **Bootstrap requests must be bounded**: `/users/me` controls the full-screen onboarding gate. Keep the shared API deadline and explicit retry state so database stalls cannot produce an infinite white spinner.

@@ -1,4 +1,5 @@
 import { createClient } from './supabase/client';
+import { fetchWithTimeout } from './api-request';
 import type {
   Transaction,
   TransactionPhoto,
@@ -43,7 +44,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const authHeaders = await getAuthHeaders();
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetchWithTimeout(`${API_URL}${path}`, {
     ...init,
     headers: { ...authHeaders, ...init?.headers },
   });
