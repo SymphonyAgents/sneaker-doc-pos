@@ -27,6 +27,7 @@ describe('DrizzleService', () => {
 
     expect(postgres).toHaveBeenCalledWith('postgresql://localhost/test', {
       prepare: false,
+      max: 3,
       connect_timeout: 10,
       idle_timeout: 20,
       max_lifetime: 300,

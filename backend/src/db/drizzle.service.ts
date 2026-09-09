@@ -4,6 +4,7 @@ import { drizzle, PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from './schema';
 import {
+  DATABASE_POOL_MAX_CONNECTIONS,
   DATABASE_CONNECT_TIMEOUT_SECONDS,
   DATABASE_IDLE_TIMEOUT_SECONDS,
   DATABASE_MAX_LIFETIME_SECONDS,
@@ -18,9 +19,9 @@ export class DrizzleService implements OnModuleInit {
 
   onModuleInit() {
     const url = this.config.getOrThrow<string>('DATABASE_URL');
-    // prepare: false is REQUIRED for PgBouncer (transaction pooler)
     const client = postgres(url, {
       prepare: false,
+      max: DATABASE_POOL_MAX_CONNECTIONS,
       connect_timeout: DATABASE_CONNECT_TIMEOUT_SECONDS,
       idle_timeout: DATABASE_IDLE_TIMEOUT_SECONDS,
       max_lifetime: DATABASE_MAX_LIFETIME_SECONDS,
